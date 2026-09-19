@@ -1,0 +1,163 @@
+show_file:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    file:
+      required: true
+      example: image.jpg
+      selector:
+        text:
+    length:
+      required: true
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    zone_id:
+      selector:
+        text:
+    zone_name:
+      selector:
+        text:
+
+show_html:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    html:
+      required: true
+      example: "<h1>Dinner is ready</h1>"
+      selector:
+        text:
+          multiline: true
+    length:
+      required: true
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    zone_id:
+      selector:
+        text:
+    zone_name:
+      selector:
+        text:
+
+show_stream:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    url:
+      required: true
+      example: rtsp://192.168.1.50/stream
+      selector:
+        text:
+    length:
+      required: true
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    zone_id:
+      selector:
+        text:
+    zone_name:
+      selector:
+        text:
+
+set_playlist:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    playlist_id:
+      selector:
+        number:
+          min: 1
+          mode: box
+    playlist_name:
+      selector:
+        text:
+    playlist_number:
+      selector:
+        number:
+          min: 1
+          mode: box
+    length:
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    zone_id:
+      selector:
+        text:
+    zone_name:
+      selector:
+        text:
+
+set_layout:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    layout_id:
+      selector:
+        number:
+          min: 1
+          mode: box
+    layout_name:
+      example: Default layout
+      selector:
+        text:
+    length:
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+
+synchronize:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    url:
+      required: true
+      example: https://example.com/data.zip
+      selector:
+        text:
+    method:
+      default: GET
+      selector:
+        select:
+          options:
+            - GET
+            - POST
+    target:
+      selector:
+        text:
+    clear_folder:
+      default: false
+      selector:
+        boolean:
