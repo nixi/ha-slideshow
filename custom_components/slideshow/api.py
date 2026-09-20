@@ -143,10 +143,12 @@ class SlideshowClient:
         # deviceInfo answers with a bare object; everything else is wrapped.
         if "success" in payload:
             if not payload["success"]:
-                raise SlideshowApiError(
-                    f"{path} was rejected by the device: "
-                    f"{payload.get('error', 'no reason given')}"
+                reason = (
+                    payload.get("errorMessage")
+                    or payload.get("errorCode")
+                    or "no reason given"
                 )
+                raise SlideshowApiError(f"{path} was rejected by the device: {reason}")
             result = payload.get("result", {})
             return result if isinstance(result, dict) else {}
         return payload
@@ -265,18 +267,22 @@ class SlideshowClient:
 
     async def async_show_stream(
         self,
-        url: str,
-        length: int,
+        address: str,
+        duration: int,
         zone_id: Any = None,
         zone_name: str | None = None,
     ) -> None:
-        """Display a video stream, overwriting the current playlist."""
+        """Display an audio or video stream, overwriting the current playlist.
+
+        Note the parameter names: this endpoint takes ``address``/``duration``
+        where the others take ``file``/``length``.
+        """
         await self._request(
             "POST",
             "showStream",
             {
-                "url": url,
-                "length": length,
+                "address": address,
+                "duration": duration,
                 "zoneId": zone_id,
                 "zoneName": zone_name,
             },
@@ -376,8 +382,8 @@ class SlideshowClient:
     async def async_synchronize(
         self,
         url: str,
+        target: str,
         method: str = "GET",
-        target: str | None = None,
         clear_folder: bool = False,
     ) -> None:
         """Trigger a file synchronisation from an external server."""

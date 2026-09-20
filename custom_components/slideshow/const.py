@@ -29,6 +29,7 @@ SERVICE_SHOW_STREAM: Final = "show_stream"
 SERVICE_SET_PLAYLIST: Final = "set_playlist"
 SERVICE_SET_LAYOUT: Final = "set_layout"
 SERVICE_SYNCHRONIZE: Final = "synchronize"
+SERVICE_SHOW_CAMERA: Final = "show_camera"
 
 ATTR_FILE: Final = "file"
 ATTR_HTML: Final = "html"
@@ -44,3 +45,13 @@ ATTR_LAYOUT_NAME: Final = "layout_name"
 ATTR_METHOD: Final = "method"
 ATTR_TARGET: Final = "target"
 ATTR_CLEAR_FOLDER: Final = "clear_folder"
+ATTR_CAMERA_ENTITY_ID: Final = "camera_entity_id"
+ATTR_DURATION: Final = "duration"
+
+# The audio playlist is addressed by this literal zone ID. Note the device
+# rejects the audio zone's *name*, so only the ID works.
+AUDIO_ZONE_ID: Final = "audio"
+
+# Streams and remote media have no length known to Home Assistant, so a
+# generous default is used and the stream is expected to end on its own.
+DEFAULT_MEDIA_DURATION: Final = 3600

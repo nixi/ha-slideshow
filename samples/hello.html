@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SlideShow sample</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: grid; place-content: center; text-align: center;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: linear-gradient(135deg, #2451ff, #323471); color: #fff;
+  }
+  h1 { font-size: 5vw; margin: 0 0 2vh; }
+  p  { font-size: 2vw; margin: 0; opacity: .85; }
+  #clock { font-size: 8vw; font-variant-numeric: tabular-nums; margin-top: 4vh; }
+</style>
+<h1>Hello from SlideShow</h1>
+<p>This is a plain HTML file playing as a slide.</p>
+<div id="clock"></div>
+<script>
+  function tick() {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  tick(); setInterval(tick, 1000);
+</script>

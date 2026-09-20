@@ -136,6 +136,33 @@ set_layout:
           unit_of_measurement: s
           mode: box
 
+show_camera:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    camera_entity_id:
+      required: true
+      example: camera.front_door
+      selector:
+        entity:
+          domain: camera
+    duration:
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: s
+          mode: box
+    zone_id:
+      selector:
+        text:
+    zone_name:
+      selector:
+        text:
+
 synchronize:
   target:
     entity:
@@ -147,6 +174,11 @@ synchronize:
       example: https://example.com/data.zip
       selector:
         text:
+    target:
+      required: true
+      example: downloads
+      selector:
+        text:
     method:
       default: GET
       selector:
@@ -154,9 +186,7 @@ synchronize:
           options:
             - GET
             - POST
-    target:
-      selector:
-        text:
+            - PUT
     clear_folder:
       default: false
       selector:

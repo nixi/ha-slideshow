@@ -6,3 +6,4 @@ venv/
 .ruff_cache/
 .coverage
 .DS_Store
+samples.zip

@@ -51,43 +51,105 @@
   },
   "entity": {
     "binary_sensor": {
-      "screen_power": { "name": "Screen" },
-      "paused": { "name": "Paused" },
-      "rooted": { "name": "Rooted" },
-      "device_owner": { "name": "Device owner" },
-      "lock_task_mode": { "name": "Lock task mode" }
+      "screen_power": {
+        "name": "Screen"
+      },
+      "paused": {
+        "name": "Paused"
+      },
+      "rooted": {
+        "name": "Rooted"
+      },
+      "device_owner": {
+        "name": "Device owner"
+      },
+      "lock_task_mode": {
+        "name": "Lock task mode"
+      }
     },
     "button": {
-      "next": { "name": "Next" },
-      "previous": { "name": "Previous" },
-      "audio_next": { "name": "Next audio track" },
-      "toggle_fullscreen": { "name": "Toggle fullscreen" },
-      "clear_playlist": { "name": "Clear playlist" },
-      "clear_layout": { "name": "Clear screen layout" },
-      "activate_screensaver": { "name": "Activate screensaver" },
-      "deactivate_screensaver": { "name": "Deactivate screensaver" },
-      "beep": { "name": "Beep" },
-      "reload_app": { "name": "Reload app" },
-      "reboot_device": { "name": "Reboot device" }
+      "next": {
+        "name": "Next"
+      },
+      "previous": {
+        "name": "Previous"
+      },
+      "audio_next": {
+        "name": "Next audio track"
+      },
+      "toggle_fullscreen": {
+        "name": "Toggle fullscreen"
+      },
+      "clear_playlist": {
+        "name": "Clear playlist"
+      },
+      "clear_layout": {
+        "name": "Clear screen layout"
+      },
+      "activate_screensaver": {
+        "name": "Activate screensaver"
+      },
+      "deactivate_screensaver": {
+        "name": "Deactivate screensaver"
+      },
+      "beep": {
+        "name": "Beep"
+      },
+      "reload_app": {
+        "name": "Reload app"
+      },
+      "reboot_device": {
+        "name": "Reboot device"
+      }
     },
     "camera": {
-      "screenshot": { "name": "Screenshot" }
+      "screenshot": {
+        "name": "Screenshot"
+      }
     },
     "sensor": {
-      "current_playlist": { "name": "Current playlist" },
-      "current_layout": { "name": "Current screen layout" },
-      "last_displayed_file": { "name": "Last displayed file" },
-      "last_displayed_time": { "name": "Last displayed at" },
-      "volume": { "name": "Volume" },
-      "screen_brightness": { "name": "Screen brightness" },
-      "storage_free": { "name": "Storage free" },
-      "storage_used_percent": { "name": "Storage used" },
-      "storage_total": { "name": "Storage total" },
-      "device_booted": { "name": "Device booted" },
-      "app_started": { "name": "App started" },
-      "ip_address": { "name": "IP address" },
-      "android_version": { "name": "Android version" },
-      "software_version": { "name": "SlideShow version" }
+      "current_playlist": {
+        "name": "Current playlist"
+      },
+      "current_layout": {
+        "name": "Current screen layout"
+      },
+      "last_displayed_file": {
+        "name": "Last displayed file"
+      },
+      "last_displayed_time": {
+        "name": "Last displayed at"
+      },
+      "volume": {
+        "name": "Volume"
+      },
+      "screen_brightness": {
+        "name": "Screen brightness"
+      },
+      "storage_free": {
+        "name": "Storage free"
+      },
+      "storage_used_percent": {
+        "name": "Storage used"
+      },
+      "storage_total": {
+        "name": "Storage total"
+      },
+      "device_booted": {
+        "name": "Device booted"
+      },
+      "app_started": {
+        "name": "App started"
+      },
+      "ip_address": {
+        "name": "IP address"
+      },
+      "android_version": {
+        "name": "Android version"
+      },
+      "software_version": {
+        "name": "SlideShow version"
+      }
     }
   },
   "services": {
@@ -95,61 +157,158 @@
       "name": "Show file",
       "description": "Displays a single file from the player's storage, overriding the current playlist.",
       "fields": {
-        "file": { "name": "File", "description": "Path to the file within SlideShow, for example image.jpg or nested/file.mp4." },
-        "length": { "name": "Length", "description": "How long to display the file, in seconds." },
-        "zone_id": { "name": "Zone ID", "description": "Zone to display in, or \"audio\" for the audio playlist. Defaults to the main zone." },
-        "zone_name": { "name": "Zone name", "description": "Name of the zone to display in. Defaults to the main zone." }
+        "file": {
+          "name": "File",
+          "description": "Path to the file within SlideShow, for example image.jpg or nested/file.mp4."
+        },
+        "length": {
+          "name": "Length",
+          "description": "How long to display the file, in seconds."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to display in, or \"audio\" for the audio playlist. Defaults to the main zone."
+        },
+        "zone_name": {
+          "name": "Zone name",
+          "description": "Name of the zone to display in. Defaults to the main zone."
+        }
       }
     },
     "show_html": {
       "name": "Show HTML",
       "description": "Renders a block of HTML on the screen, overriding the current playlist. Useful for pushing templated content from Home Assistant.",
       "fields": {
-        "html": { "name": "HTML", "description": "The HTML to render." },
-        "length": { "name": "Length", "description": "How long to display the content, in seconds." },
-        "zone_id": { "name": "Zone ID", "description": "Zone to display in. Defaults to the main zone." },
-        "zone_name": { "name": "Zone name", "description": "Name of the zone to display in. Defaults to the main zone." }
+        "html": {
+          "name": "HTML",
+          "description": "The HTML to render."
+        },
+        "length": {
+          "name": "Length",
+          "description": "How long to display the content, in seconds."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to display in. Defaults to the main zone."
+        },
+        "zone_name": {
+          "name": "Zone name",
+          "description": "Name of the zone to display in. Defaults to the main zone."
+        }
       }
     },
     "show_stream": {
       "name": "Show stream",
       "description": "Displays a video stream, overriding the current playlist.",
       "fields": {
-        "url": { "name": "URL", "description": "URL of the video stream." },
-        "length": { "name": "Length", "description": "How long to display the stream, in seconds." },
-        "zone_id": { "name": "Zone ID", "description": "Zone to display in. Defaults to the main zone." },
-        "zone_name": { "name": "Zone name", "description": "Name of the zone to display in. Defaults to the main zone." }
+        "url": {
+          "name": "URL",
+          "description": "URL of the video stream."
+        },
+        "length": {
+          "name": "Length",
+          "description": "How long to display the stream, in seconds."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to display in. Defaults to the main zone."
+        },
+        "zone_name": {
+          "name": "Zone name",
+          "description": "Name of the zone to display in. Defaults to the main zone."
+        }
       }
     },
     "set_playlist": {
       "name": "Set playlist",
       "description": "Switches a zone to a particular playlist. Give at least one of playlist ID, name or number.",
       "fields": {
-        "playlist_id": { "name": "Playlist ID", "description": "ID of the playlist." },
-        "playlist_name": { "name": "Playlist name", "description": "Name of the playlist." },
-        "playlist_number": { "name": "Playlist number", "description": "Number of the playlist." },
-        "length": { "name": "Length", "description": "How long to play the playlist, in seconds. Omit to play until changed." },
-        "zone_id": { "name": "Zone ID", "description": "Zone to play in. Defaults to the main zone." },
-        "zone_name": { "name": "Zone name", "description": "Name of the zone to play in. Defaults to the main zone." }
+        "playlist_id": {
+          "name": "Playlist ID",
+          "description": "ID of the playlist."
+        },
+        "playlist_name": {
+          "name": "Playlist name",
+          "description": "Name of the playlist."
+        },
+        "playlist_number": {
+          "name": "Playlist number",
+          "description": "Number of the playlist."
+        },
+        "length": {
+          "name": "Length",
+          "description": "How long to play the playlist, in seconds. Omit to play until changed."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to play in. Defaults to the main zone."
+        },
+        "zone_name": {
+          "name": "Zone name",
+          "description": "Name of the zone to play in. Defaults to the main zone."
+        }
       }
     },
     "set_layout": {
       "name": "Set screen layout",
       "description": "Switches the player to a particular screen layout. Give at least one of layout ID or name.",
       "fields": {
-        "layout_id": { "name": "Layout ID", "description": "ID of the screen layout." },
-        "layout_name": { "name": "Layout name", "description": "Name of the screen layout." },
-        "length": { "name": "Length", "description": "How long to show the layout, in seconds. Omit to show until changed." }
+        "layout_id": {
+          "name": "Layout ID",
+          "description": "ID of the screen layout."
+        },
+        "layout_name": {
+          "name": "Layout name",
+          "description": "Name of the screen layout."
+        },
+        "length": {
+          "name": "Length",
+          "description": "How long to show the layout, in seconds. Omit to show until changed."
+        }
       }
     },
     "synchronize": {
       "name": "Synchronize files",
       "description": "Triggers a file synchronization from an external server.",
       "fields": {
-        "url": { "name": "URL", "description": "URL to download content from." },
-        "method": { "name": "Method", "description": "HTTP method to use." },
-        "target": { "name": "Target", "description": "Target file or folder within SlideShow." },
-        "clear_folder": { "name": "Clear folder", "description": "Whether to empty the target folder before downloading." }
+        "url": {
+          "name": "URL",
+          "description": "URL to download content from."
+        },
+        "method": {
+          "name": "Method",
+          "description": "HTTP method to use (GET, POST or PUT)."
+        },
+        "target": {
+          "name": "Target",
+          "description": "Target file or folder within SlideShow. Required by the device."
+        },
+        "clear_folder": {
+          "name": "Clear folder",
+          "description": "Whether to empty the target folder before downloading."
+        }
+      }
+    },
+    "show_camera": {
+      "name": "Show camera",
+      "description": "Displays a camera on the player. Uses the camera's own RTSP stream when it has one, and falls back to a still image that refreshes every second.",
+      "fields": {
+        "camera_entity_id": {
+          "name": "Camera",
+          "description": "The camera entity to display."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "How long to show the camera, in seconds."
+        },
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Zone to display in. Defaults to the main zone."
+        },
+        "zone_name": {
+          "name": "Zone name",
+          "description": "Name of the zone to display in. Defaults to the main zone."
+        }
       }
     }
   }

@@ -5,20 +5,27 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components import media_source
+from homeassistant.components.camera import async_get_stream_source
 from homeassistant.components.media_player import (
+    BrowseMedia,
     MediaPlayerDeviceClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
+    async_process_play_media_url,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    ATTR_CAMERA_ENTITY_ID,
     ATTR_CLEAR_FOLDER,
+    ATTR_DURATION,
     ATTR_FILE,
     ATTR_HTML,
     ATTR_LAYOUT_ID,
@@ -32,8 +39,11 @@ from .const import (
     ATTR_URL,
     ATTR_ZONE_ID,
     ATTR_ZONE_NAME,
+    AUDIO_ZONE_ID,
+    DEFAULT_MEDIA_DURATION,
     SERVICE_SET_LAYOUT,
     SERVICE_SET_PLAYLIST,
+    SERVICE_SHOW_CAMERA,
     SERVICE_SHOW_FILE,
     SERVICE_SHOW_HTML,
     SERVICE_SHOW_STREAM,
@@ -121,11 +131,22 @@ async def async_setup_entry(
         "async_set_layout",
     )
     platform.async_register_entity_service(
+        SERVICE_SHOW_CAMERA,
+        {
+            vol.Required(ATTR_CAMERA_ENTITY_ID): cv.entity_id,
+            vol.Optional(ATTR_DURATION, default=DEFAULT_MEDIA_DURATION): vol.All(
+                vol.Coerce(int), vol.Range(min=1)
+            ),
+            **ZONE_SCHEMA,
+        },
+        "async_show_camera",
+    )
+    platform.async_register_entity_service(
         SERVICE_SYNCHRONIZE,
         {
             vol.Required(ATTR_URL): cv.string,
-            vol.Optional(ATTR_METHOD, default="GET"): vol.In(["GET", "POST"]),
-            vol.Optional(ATTR_TARGET): cv.string,
+            vol.Required(ATTR_TARGET): cv.string,
+            vol.Optional(ATTR_METHOD, default="GET"): vol.In(["GET", "POST", "PUT"]),
             vol.Optional(ATTR_CLEAR_FOLDER, default=False): cv.boolean,
         },
         "async_synchronize",
@@ -147,6 +168,8 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.VOLUME_STEP
         | MediaPlayerEntityFeature.VOLUME_MUTE
         | MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.BROWSE_MEDIA
+        | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
     )
 
     def __init__(self, coordinator: SlideshowCoordinator) -> None:
@@ -242,15 +265,106 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             await self.client.async_set_volume(self._volume_before_mute or 20)
         await self.coordinator.async_request_refresh()
 
+    async def async_browse_media(
+        self,
+        media_content_type: MediaType | str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia:
+        """Browse Home Assistant's media sources."""
+        return await media_source.async_browse_media(
+            self.hass,
+            media_content_id,
+            content_filter=lambda item: item.media_content_type.startswith(
+                ("audio/", "video/", "image/")
+            ),
+        )
+
     async def async_play_media(
-        self, media_type: MediaType | str, media_id: str, **kwargs: Any
+        self,
+        media_type: MediaType | str,
+        media_id: str,
+        **kwargs: Any,
     ) -> None:
-        """Display a file from the player's storage, or a stream URL."""
-        length = int(kwargs.get("extra", {}).get("length", 30))
-        if media_id.startswith(("http://", "https://", "rtsp://", "rtmp://")):
-            await self.client.async_show_stream(media_id, length)
+        """Play media on the player.
+
+        Home Assistant media (the media library, text-to-speech) arrives as a
+        ``media_source://`` ID which resolves to an HTTP URL served by Home
+        Assistant itself, so the player has to be able to reach Home Assistant
+        on the network.
+        """
+        mime_type: str | None = None
+        if media_source.is_media_source_id(media_id):
+            play_item = await media_source.async_resolve_media(
+                self.hass, media_id, self.entity_id
+            )
+            media_id = play_item.url
+            mime_type = play_item.mime_type
+
+        media_id = async_process_play_media_url(self.hass, media_id)
+        duration = int(kwargs.get("extra", {}).get("duration", DEFAULT_MEDIA_DURATION))
+        zone_id = kwargs.get("extra", {}).get("zone_id")
+
+        is_audio = (mime_type or "").startswith("audio/") or media_type in (
+            MediaType.MUSIC,
+            "audio",
+        )
+        is_image = (mime_type or "").startswith("image/") or (
+            media_type == MediaType.IMAGE
+        )
+
+        if is_image:
+            # There is no endpoint that displays a remote image, but an HTML
+            # fragment pointing at the URL achieves the same thing.
+            await self.client.async_show_html(
+                _fullscreen_image_html(media_id), duration, zone_id=zone_id
+            )
+        elif is_audio:
+            # Playing into the audio zone leaves whatever is on screen alone.
+            await self.client.async_show_stream(
+                media_id, duration, zone_id=zone_id or AUDIO_ZONE_ID
+            )
         else:
-            await self.client.async_show_file(media_id, length)
+            await self.client.async_show_stream(media_id, duration, zone_id=zone_id)
+
+        await self.coordinator.async_request_refresh()
+
+    async def async_show_camera(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.show_camera`` service.
+
+        Prefers the camera's own RTSP source, which the player can render
+        directly, and falls back to Home Assistant's still image.
+        """
+        camera_entity_id = kwargs[ATTR_CAMERA_ENTITY_ID]
+        duration = kwargs.get(ATTR_DURATION, DEFAULT_MEDIA_DURATION)
+        zone_id = kwargs.get(ATTR_ZONE_ID)
+        zone_name = kwargs.get(ATTR_ZONE_NAME)
+
+        try:
+            stream_source = await async_get_stream_source(self.hass, camera_entity_id)
+        except HomeAssistantError as err:
+            raise HomeAssistantError(
+                f"Could not read a stream from {camera_entity_id}: {err}"
+            ) from err
+
+        if stream_source:
+            await self.client.async_show_stream(
+                stream_source, duration, zone_id=zone_id, zone_name=zone_name
+            )
+        else:
+            # No stream: fall back to the camera's still image, refreshed by
+            # the page itself so it does not freeze on a single frame.
+            state = self.hass.states.get(camera_entity_id)
+            if state is None or not (path := state.attributes.get("entity_picture")):
+                raise HomeAssistantError(
+                    f"{camera_entity_id} offers neither a stream nor a still image"
+                )
+            await self.client.async_show_html(
+                _refreshing_image_html(async_process_play_media_url(self.hass, path)),
+                duration,
+                zone_id=zone_id,
+                zone_name=zone_name,
+            )
+
         await self.coordinator.async_request_refresh()
 
     # -- Entity services -----------------------------------------------------
@@ -310,7 +424,28 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         """Handle the ``slideshow.synchronize`` service."""
         await self.client.async_synchronize(
             kwargs[ATTR_URL],
+            kwargs[ATTR_TARGET],
             method=kwargs.get(ATTR_METHOD, "GET"),
-            target=kwargs.get(ATTR_TARGET),
             clear_folder=kwargs.get(ATTR_CLEAR_FOLDER, False),
         )
+
+
+def _fullscreen_image_html(url: str) -> str:
+    """Return HTML that shows one image filling the zone."""
+    return (
+        '<div style="position:absolute;inset:0;background:#000">'
+        f'<img src="{url}" '
+        'style="width:100%;height:100%;object-fit:contain"></div>'
+    )
+
+
+def _refreshing_image_html(url: str) -> str:
+    """Return HTML that reloads a still image once a second."""
+    separator = "&" if "?" in url else "?"
+    return (
+        '<div style="position:absolute;inset:0;background:#000">'
+        f'<img id="c" src="{url}" '
+        'style="width:100%;height:100%;object-fit:contain">'
+        "<script>setInterval(function(){document.getElementById('c').src="
+        f"'{url}{separator}t='+Date.now();}}, 1000);</script></div>"
+    )
