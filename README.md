@@ -48,6 +48,52 @@ data:
 > for the full duration. Set `color: #fff`, or give your own element a background such as
 > `<body style="background:#fff;color:#000">`.
 
+### A reusable HTML slide
+
+`<style>` blocks, flexbox, gradients and `vh`/`vw` units all work (the player runs a
+Chromium WebView). This skeleton sets a background and a colour, so it is visible, and
+centres its content at any resolution:
+
+```yaml
+script:
+  frame_show:
+    alias: Show something on the frame
+    fields:
+      content:
+        selector: { text: { multiline: true } }
+      seconds:
+        default: 20
+        selector: { number: { min: 1, max: 3600 } }
+    sequence:
+      - action: slideshow.show_html
+        target:
+          entity_id: media_player.frame
+        data:
+          length: "{{ seconds | int(20) }}"
+          html: >
+            <style>
+              html,body{height:100%;margin:0}
+              body{display:flex;flex-direction:column;
+                   align-items:center;justify-content:center;
+                   background:linear-gradient(135deg,#1b4965,#0d2436);
+                   color:#fff;font-family:-apple-system,Roboto,sans-serif}
+              .big{font-size:16vh;font-weight:300;line-height:1}
+              .sub{font-size:5vh;opacity:.75;margin-top:2vh}
+            </style>
+            {{ content }}
+```
+
+Then every caller is one line of markup:
+
+```yaml
+action: script.frame_show
+data:
+  seconds: 20
+  content: >
+    <div class="big">{{ states('sensor.outside_temperature') }} °C</div>
+    <div class="sub">{{ states('weather.home') }}</div>
+```
+
 ## Playing media on the player
 
 The `media_player` entity is a real Home Assistant media player, so the usual things work:
