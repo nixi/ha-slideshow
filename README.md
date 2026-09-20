@@ -35,11 +35,18 @@ target:
 data:
   length: 20
   html: >
-    <div style="font-family: sans-serif; text-align: center; padding-top: 20vh">
+    <div style="font-family: sans-serif; text-align: center;
+                padding-top: 20vh; color: #fff">
       <div style="font-size: 6vw">{{ states('sensor.outside_temperature') }} °C</div>
       <div style="font-size: 2vw">{{ states('weather.home') }}</div>
     </div>
 ```
+
+> [!TIP]
+> **Always set a text colour.** The player renders HTML on a black background, but the
+> default text colour is also black, so unstyled HTML shows up as a blank black screen
+> for the full duration. Set `color: #fff`, or give your own element a background such as
+> `<body style="background:#fff;color:#000">`.
 
 ## Playing media on the player
 

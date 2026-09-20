@@ -181,7 +181,7 @@
       "fields": {
         "html": {
           "name": "HTML",
-          "description": "The HTML to render."
+          "description": "The HTML to render. Set a text colour, for example color: #fff — the player draws HTML on a black background but defaults the text colour to black too, so unstyled HTML appears as a blank black screen."
         },
         "length": {
           "name": "Length",
