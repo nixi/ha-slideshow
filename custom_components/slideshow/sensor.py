@@ -219,15 +219,30 @@ class SlideshowPanelUrlSensor(SlideshowEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
-        """Return the panel URL, or the path if no base URL is known."""
+        """Return the panel URL, or the path if no base URL is known.
+
+        Players are often old Android devices whose browser cannot manage a
+        modern certificate chain, so the LAN address is tried on its own first
+        and an external address is only a fallback.
+        """
         secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
         if not secret:
             return None
         path = panel_path(secret)
-        try:
-            # The player reaches Home Assistant over the LAN, so prefer the
-            # internal URL and do not fall back to a cloud address.
-            base = get_url(self.hass, allow_cloud=False, prefer_external=False)
-        except NoURLAvailableError:
-            return path
-        return f"{base}{path}"
+        for options in (
+            {"allow_external": False, "allow_cloud": False},
+            {"allow_cloud": False},
+        ):
+            try:
+                return f"{get_url(self.hass, **options)}{path}"
+            except NoURLAvailableError:
+                continue
+        return path
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the bare path, for building a URL by hand."""
+        secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
+        if not secret:
+            return None
+        return {"path": panel_path(secret)}

@@ -78,6 +78,17 @@ come out invisible the way sent HTML can. These classes are available: `ss-grid`
 `ss-card`, `ss-label`, `ss-big`, `ss-mid`, `ss-muted`, `ss-list`, and `ss-ok` / `ss-warn` /
 `ss-bad` for state colours. Your template can include its own `<style>` block as well.
 
+> [!IMPORTANT]
+> **Load the URL directly — do not put it in an `<iframe>`.** Home Assistant sends
+> `X-Frame-Options: SAMEORIGIN`, so a cross-origin frame renders as a broken image. A
+> *Web page* content item loads it directly and works.
+
+> [!TIP]
+> Set **Internal URL** under Settings → System → Network. Without it Home Assistant only
+> knows the external address, and the Panel URL sensor has to hand the player an HTTPS URL
+> it may not be able to load — older Android players often cannot manage a modern
+> certificate chain in their browser, even though media playback works fine.
+
 > [!NOTE]
 > The panel URL contains a secret generated for each player and is reachable **without a
 > Home Assistant login** — that is what lets the player load it. Anyone who has the URL can
