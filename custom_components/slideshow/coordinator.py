@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -13,6 +13,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import SlideshowAuthError, SlideshowClient, SlideshowError
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+
+if TYPE_CHECKING:
+    from .panel import PanelRenderer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +26,9 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Poll ``/ajax/deviceInfo``, which carries the whole device status."""
 
     config_entry: SlideshowConfigEntry
+
+    #: Set during setup; serves the live dashboard page for this player.
+    panel: PanelRenderer
 
     def __init__(
         self,

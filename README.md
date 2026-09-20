@@ -48,6 +48,42 @@ data:
 > for the full duration. Set `color: #fff`, or give your own element a background such as
 > `<body style="background:#fff;color:#000">`.
 
+## A live dashboard that stays on screen
+
+`show_html` is a *notification* mechanism: it overrides the playlist, then hands back. For
+a dashboard that is always up, the integration serves a page of its own.
+
+Home Assistant renders your Jinja template **inside Home Assistant**, where it already has
+full access to state, and streams re-renders to the page over server-sent events. The page
+swaps its own markup, so there is no reload and no flicker. Nothing needs a login, and no
+Home Assistant token is ever handed to the player.
+
+**Setting it up**
+
+1. Open the integration's **Configure** dialog and edit **Panel template**. Only the lists
+   at the top need changing — point them at your own entities.
+2. Copy the value of the **Panel URL** sensor (a diagnostic entity on the device).
+3. In SlideShow's web interface, add a content item of type **Web page** with that URL and
+   put it in a playlist.
+
+That item behaves like any other slide, so it survives reboots and app restarts, and it
+can share a rotation with your photos.
+
+**How it updates.** Home Assistant watches exactly the entities your template touches and
+re-renders only when one of them changes, so an idle dashboard costs nothing. A template
+using `now()` also re-renders on the minute, which is enough for a clock.
+
+**Styling.** The page supplies the theme, so a template only emits content and can never
+come out invisible the way sent HTML can. These classes are available: `ss-grid`, `ss-row`,
+`ss-card`, `ss-label`, `ss-big`, `ss-mid`, `ss-muted`, `ss-list`, and `ss-ok` / `ss-warn` /
+`ss-bad` for state colours. Your template can include its own `<style>` block as well.
+
+> [!NOTE]
+> The panel URL contains a secret generated for each player and is reachable **without a
+> Home Assistant login** — that is what lets the player load it. Anyone who has the URL can
+> see that page, so treat it as you would a share link. It exposes only what your template
+> renders, never an API token, and the rest of Home Assistant stays authenticated.
+
 ### A reusable HTML slide
 
 `<style>` blocks, flexbox, gradients and `vh`/`vw` units all work (the player runs a

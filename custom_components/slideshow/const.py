@@ -52,6 +52,87 @@ ATTR_DURATION: Final = "duration"
 # rejects the audio zone's *name*, so only the ID works.
 AUDIO_ZONE_ID: Final = "audio"
 
+# Live dashboard panel
+CONF_PANEL_SECRET: Final = "panel_secret"
+CONF_PANEL_TEMPLATE: Final = "panel_template"
+CONF_PANEL_TITLE: Final = "panel_title"
+DEFAULT_PANEL_TITLE: Final = "SlideShow panel"
+
 # Streams and remote media have no length known to Home Assistant, so a
 # generous default is used and the stream is expected to end on its own.
 DEFAULT_MEDIA_DURATION: Final = 3600
+
+
+# Shipped as the starting point for the live panel. The three lists at the top
+# are the only part most people need to touch, so they are kept together.
+DEFAULT_PANEL_TEMPLATE: Final = """\
+{%- set weather_entity = "weather.home" -%}
+{%- set outdoor = "sensor.outside_temperature" -%}
+{%- set indoor = [
+     ("Living room", "sensor.living_room_temperature"),
+     ("Hallway", "sensor.hallway_temperature"),
+   ] -%}
+{%- set agenda = ["calendar.home"] -%}
+{%- set transit = "sensor.departures" -%}
+{%- set status = [
+     ("Alarm", "alarm_control_panel.home"),
+     ("Front door", "lock.front_door"),
+   ] -%}
+{%- set alerting = ["on", "open", "unlocked", "wet", "triggered", "detected"] -%}
+
+<div class="ss-grid" style="grid-template-rows: auto 1fr;">
+
+  <div class="ss-row">
+    <div class="ss-card" style="flex: 0 0 34%">
+      <div class="ss-label">Outside</div>
+      <div class="ss-big">{{ states(outdoor) }}&deg;</div>
+      <div class="ss-mid ss-muted">
+        {{ states(weather_entity) | replace("_", " ") | title }}
+      </div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-label">Inside</div>
+      <ul class="ss-list">
+        {%- for name, eid in indoor %}
+        <li><span>{{ name }}</span>
+            <span>{{ states(eid) }}
+              {{ state_attr(eid, "unit_of_measurement") or "" }}</span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="ss-row">
+    <div class="ss-card">
+      <div class="ss-label">Next up</div>
+      <ul class="ss-list">
+        {%- for eid in agenda %}
+        {%- if states(eid) not in ["unknown", "unavailable"] %}
+        <li><span>{{ state_attr(eid, "message") or "Nothing scheduled" }}</span>
+            <span class="ss-muted">
+              {{ (state_attr(eid, "start_time") or "")[11:16] }}</span></li>
+        {%- endif %}
+        {%- endfor %}
+        {%- if states(transit) not in ["unknown", "unavailable"] %}
+        <li><span>Next departure</span><span>{{ states(transit) }}</span></li>
+        {%- endif %}
+      </ul>
+    </div>
+    <div class="ss-card">
+      <div class="ss-label">Status</div>
+      <ul class="ss-list">
+        {%- for name, eid in status %}
+        {%- set value = states(eid) %}
+        <li><span>{{ name }}</span>
+            <span class="{{ "ss-bad" if value in alerting else "ss-ok" }}">
+              {{ value | replace("_", " ") | title }}</span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </div>
+
+</div>
+<div class="ss-label" style="position: fixed; bottom: 1.5vh; left: 3vw">
+  {{ now().strftime("%H:%M &middot; %a %d %b") }}
+</div>
+"""

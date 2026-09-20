@@ -9,6 +9,7 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "http",
     "media_source"
   ],
   "documentation": "https://github.com/nixi/ha-slideshow",
@@ -16,5 +17,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/nixi/ha-slideshow/issues",
   "requirements": [],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

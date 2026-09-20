@@ -21,6 +21,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .api import (
@@ -30,8 +33,12 @@ from .api import (
     SlideshowError,
 )
 from .const import (
+    CONF_PANEL_TEMPLATE,
+    CONF_PANEL_TITLE,
     CONF_SCAN_INTERVAL,
     CONF_VERIFY_SSL,
+    DEFAULT_PANEL_TEMPLATE,
+    DEFAULT_PANEL_TITLE,
     DEFAULT_PASSWORD,
     DEFAULT_PORT_HTTP,
     DEFAULT_SCAN_INTERVAL,
@@ -166,14 +173,15 @@ class SlideshowOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(
+        options = self.config_entry.options
+        interval = options.get(
             CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds())
         )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_SCAN_INTERVAL, default=current): NumberSelector(
+                    vol.Required(CONF_SCAN_INTERVAL, default=interval): NumberSelector(
                         NumberSelectorConfig(
                             min=MIN_SCAN_INTERVAL,
                             max=MAX_SCAN_INTERVAL,
@@ -181,7 +189,21 @@ class SlideshowOptionsFlow(OptionsFlow):
                             unit_of_measurement="s",
                             mode=NumberSelectorMode.BOX,
                         )
-                    )
+                    ),
+                    vol.Required(
+                        CONF_PANEL_TITLE,
+                        default=options.get(CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE),
+                    ): str,
+                    vol.Required(
+                        CONF_PANEL_TEMPLATE,
+                        default=options.get(
+                            CONF_PANEL_TEMPLATE, DEFAULT_PANEL_TEMPLATE
+                        ),
+                    ): TextSelector(
+                        TextSelectorConfig(
+                            type=TextSelectorType.TEXT, multiline=True
+                        )
+                    ),
                 }
             ),
         )

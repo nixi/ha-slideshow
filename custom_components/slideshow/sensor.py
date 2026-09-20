@@ -17,10 +17,13 @@ from homeassistant.components.sensor import (
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import dt as dt_util
 
+from .const import CONF_PANEL_SECRET
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
 from .entity import SlideshowEntity
+from .panel import panel_path
 
 
 def _timestamp_from_millis(data: dict[str, Any], key: str) -> datetime | None:
@@ -175,9 +178,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up the SlideShow sensors."""
     coordinator = entry.runtime_data
-    async_add_entities(
+    entities: list[SensorEntity] = [
         SlideshowSensor(coordinator, description) for description in SENSORS
-    )
+    ]
+    entities.append(SlideshowPanelUrlSensor(coordinator))
+    async_add_entities(entities)
 
 
 class SlideshowSensor(SlideshowEntity, SensorEntity):
@@ -199,3 +204,30 @@ class SlideshowSensor(SlideshowEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return the current value."""
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+
+class SlideshowPanelUrlSensor(SlideshowEntity, SensorEntity):
+    """The address the player should load to show the live dashboard."""
+
+    _attr_translation_key = "panel_url"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: SlideshowCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_panel_url"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the panel URL, or the path if no base URL is known."""
+        secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
+        if not secret:
+            return None
+        path = panel_path(secret)
+        try:
+            # The player reaches Home Assistant over the LAN, so prefer the
+            # internal URL and do not fall back to a cloud address.
+            base = get_url(self.hass, allow_cloud=False, prefer_external=False)
+        except NoURLAvailableError:
+            return path
+        return f"{base}{path}"
