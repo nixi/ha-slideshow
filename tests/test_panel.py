@@ -48,3 +48,26 @@ async def test_events_stream_renders_the_template(
     payload = chunk.decode().removeprefix("data: ").strip()
     assert json.loads(payload) == "<div>hello</div>"
     response.close()
+
+
+async def test_url_file_is_served_for_the_player(
+    hass: HomeAssistant, hass_client_no_auth, init_integration
+) -> None:
+    """SlideShow shows a web page by playing a file holding its address."""
+    hass.config.internal_url = "http://10.0.0.5:8123"
+    client = await hass_client_no_auth()
+
+    response = await client.get(f"{PATH}/url")
+    assert response.status == 200
+    assert response.headers["Content-Type"].startswith("text/plain")
+    assert (await response.text()).strip() == (
+        "http://10.0.0.5:8123/api/slideshow/panel/test-secret"
+    )
+
+
+async def test_url_file_needs_the_right_secret(
+    hass: HomeAssistant, hass_client_no_auth, init_integration
+) -> None:
+    """The .url endpoint is guarded by the same secret as the panel."""
+    client = await hass_client_no_auth()
+    assert (await client.get("/api/slideshow/panel/nope/url")).status == 404

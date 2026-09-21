@@ -164,6 +164,11 @@
       "screen": {
         "name": "Screen"
       }
+    },
+    "select": {
+      "playlist": {
+        "name": "Playlist"
+      }
     }
   },
   "services": {
@@ -322,6 +327,20 @@
         "zone_name": {
           "name": "Zone name",
           "description": "Name of the zone to display in. Defaults to the main zone."
+        }
+      }
+    },
+    "install_panel": {
+      "name": "Install panel",
+      "description": "Adds the live dashboard to the player as its own playlist, so it can be chosen like any other. Home Assistant serves a small .url file, tells the player to download it, and creates a content entry pointing at it.",
+      "fields": {
+        "content_name": {
+          "name": "Name",
+          "description": "Name for the content entry on the player."
+        },
+        "filename": {
+          "name": "File name",
+          "description": "Name of the .url file stored on the player."
         }
       }
     }

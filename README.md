@@ -10,7 +10,8 @@ Each player is added as one Home Assistant device:
 
 | Entity | What it does |
 | --- | --- |
-| `media_player` | Pause, resume, next, previous, volume and mute for the main zone. Browses the Home Assistant media library, plays music and video, and accepts text-to-speech. Shows the current file, playlist and screen layout. |
+| `select` | The playlist playing in the main zone, chosen by name. |
+| `media_player` | Pause, resume, next, previous, volume and mute for the main zone. Switches playlist through its source list. Browses the Home Assistant media library, plays music and video, and accepts text-to-speech. Shows the current file, playlist and screen layout. |
 | `camera` | A live screenshot of what is actually on the display. |
 | `sensor` | Current playlist, screen layout, last displayed file and time, volume, screen brightness, free storage and storage used. Diagnostics for IP, versions, boot and app start time. |
 | `switch` | Screen power. There is no screen power endpoint, so this selects the layout SlideShow uses while a schedule has the display off, and reads the real state back from `screenPower`. The media player's turn on/off does the same. |
@@ -24,6 +25,7 @@ Each player is added as one Home Assistant device:
 - `slideshow.show_stream` — display a video stream
 - `slideshow.set_playlist` / `slideshow.set_layout` — switch playlist or screen layout
 - `slideshow.show_camera` — put a camera on the display
+- `slideshow.install_panel` — add the live dashboard to the player as its own playlist
 - `slideshow.synchronize` — pull content from an external server
 
 `show_html` is the interesting one: it lets you push a rendered Home Assistant template
@@ -63,9 +65,12 @@ Home Assistant token is ever handed to the player.
 
 1. Open the integration's **Configure** dialog and edit **Panel template**. Only the lists
    at the top need changing — point them at your own entities.
-2. Copy the value of the **Panel URL** sensor (a diagnostic entity on the device).
-3. In SlideShow's web interface, add a content item of type **Web page** with that URL and
-   put it in a playlist.
+2. Run `slideshow.install_panel`. The player has no upload endpoint, so Home Assistant
+   serves a one-line `.url` file, tells the player to fetch it, and creates a content entry
+   pointing at it. The dashboard then appears in the **Playlist** select like any other.
+
+To do it by hand instead, copy the **Panel URL** sensor and add a content item of type
+**Web page** with that address in SlideShow's web interface.
 
 That item behaves like any other slide, so it survives reboots and app restarts, and it
 can share a rotation with your photos.
@@ -249,9 +254,11 @@ The polling interval (30 seconds by default) can be changed under the integratio
 
 ## Notes and limitations
 
-- **The API has no way to list playlists or screen layouts**, so `set_playlist` and
-  `set_layout` take a name, ID or number that you supply. You can find these in the
-  SlideShow web interface.
+- **Playlists are discovered from the player's content entries**, each of which carries the
+  ID of the playlist it belongs to — there is no list-playlists endpoint. They are re-read
+  every five minutes, so a playlist added on the device shows up shortly afterwards.
+- **Screen layouts cannot be listed**, so `set_layout` takes a name or ID that you supply.
+  You can find these in the SlideShow web interface.
 - **Playlists set by `show_file`, `show_html` and media playback override the current
   playlist** for the duration you give, then the player returns to what it was doing. Use
   the *Clear playlist* button to cut an override short.

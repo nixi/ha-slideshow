@@ -27,6 +27,7 @@ from homeassistant.helpers.event import (
     TrackTemplateResult,
     async_track_template_result,
 )
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.template import Template
 
 from .const import CONF_PANEL_SECRET, CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE, DOMAIN
@@ -38,6 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PANEL_URL = "/api/slideshow/panel/{secret}"
 EVENTS_URL = "/api/slideshow/panel/{secret}/events"
+URL_FILE_URL = "/api/slideshow/panel/{secret}/url"
 
 _VIEWS_REGISTERED = f"{DOMAIN}_panel_views"
 
@@ -227,6 +229,37 @@ class SlideshowPanelEventsView(http.HomeAssistantView):
         return response
 
 
+class SlideshowPanelUrlFileView(http.HomeAssistantView):
+    """Serve the panel address as a .url file for the player to download.
+
+    SlideShow shows a web page by playing a text file containing its address,
+    and the API offers no way to upload files -- but it can be told to
+    synchronize one from a URL, so Home Assistant serves that file itself.
+    """
+
+    url = URL_FILE_URL
+    name = "api:slideshow:panel:url"
+    requires_auth = False
+
+    async def get(self, request: web.Request, secret: str) -> web.StreamResponse:
+        """Return a one-line file holding the panel address."""
+        hass = request.app[http.KEY_HASS]
+        if _find_renderer(hass, secret) is None:
+            return web.Response(status=404, text="Unknown panel")
+        try:
+            base = get_url(hass, allow_external=False, allow_cloud=False)
+        except NoURLAvailableError:
+            try:
+                base = get_url(hass, allow_cloud=False)
+            except NoURLAvailableError:
+                return web.Response(status=503, text="No Home Assistant URL is known")
+        return web.Response(
+            text=f"{base}{panel_path(secret)}\n",
+            content_type="text/plain",
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 @callback
 def async_register_views(hass: HomeAssistant) -> None:
     """Register the panel views once for the whole integration."""
@@ -234,12 +267,18 @@ def async_register_views(hass: HomeAssistant) -> None:
         return
     hass.http.register_view(SlideshowPanelView())
     hass.http.register_view(SlideshowPanelEventsView())
+    hass.http.register_view(SlideshowPanelUrlFileView())
     hass.data[_VIEWS_REGISTERED] = True
 
 
 def panel_path(secret: str) -> str:
     """Return the path the player should load."""
     return PANEL_URL.format(secret=secret)
+
+
+def panel_url_file_path(secret: str) -> str:
+    """Return the path serving the .url file for the player to download."""
+    return URL_FILE_URL.format(secret=secret)
 
 
 def _page(title: str) -> str:

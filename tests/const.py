@@ -54,3 +54,13 @@ DEVICE_INFO = {
     "storageSpaceFree": 13118431232,
     "storageSpaceTotal": 13658669056,
 }
+
+
+# /ajax/content/get, as a real player answers it. Every entry carries the ID
+# of the playlist it belongs to, which is the only way to enumerate playlists.
+CONTENT = [
+    {"id": 1, "playlistId": 1, "type": "IMAGE", "name": "All files in cycle",
+     "path": "photos"},
+    {"id": 33, "playlistId": 34, "type": "IMAGE", "name": "HA Template",
+     "path": "ha.url"},
+]

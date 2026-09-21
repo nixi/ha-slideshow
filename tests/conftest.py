@@ -8,7 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import DOMAIN
 
-from .const import BASE, DEVICE_INFO, USER_INPUT
+from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +34,10 @@ def mock_config_entry() -> MockConfigEntry:
 def mock_device(aioclient_mock) -> None:
     """Answer the endpoints polled during setup."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
     return aioclient_mock
 
 
@@ -51,6 +55,10 @@ def bypass_panel() -> Generator[None]:
 async def init_integration(hass, aioclient_mock, mock_config_entry) -> MockConfigEntry:
     """Set the integration up against a mocked player."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
     mock_config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()

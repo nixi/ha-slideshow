@@ -163,6 +163,21 @@ show_camera:
       selector:
         text:
 
+install_panel:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    content_name:
+      default: Home Assistant panel
+      selector:
+        text:
+    filename:
+      default: ha_panel.url
+      selector:
+        text:
+
 synchronize:
   target:
     entity:

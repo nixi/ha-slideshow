@@ -6,7 +6,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import CONF_PANEL_SECRET, DOMAIN
 
-from .const import BASE, DEVICE_INFO, USER_INPUT
+from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
 
 
 async def test_setup_and_unload(hass: HomeAssistant, init_integration) -> None:
@@ -23,6 +23,10 @@ async def test_panel_secret_is_generated_once(
 ) -> None:
     """An entry made before the panel existed gets a secret on first load."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
     entry = MockConfigEntry(
         domain=DOMAIN, unique_id=DEVICE_INFO["deviceId"], data=dict(USER_INPUT)
     )

@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import SlideshowAuthError, SlideshowClient, SlideshowError
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, PLAYLIST_REFRESH_INTERVAL
 
 if TYPE_CHECKING:
     from .panel import PanelRenderer
@@ -46,12 +47,45 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=scan_interval,
         )
         self.client = client
+        #: Playlist name to playlist ID, from the player's content entries.
+        self.playlists: dict[str, int] = {}
+        self._playlists_read: datetime | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the current device status."""
         try:
-            return await self.client.async_get_device_info()
+            data = await self.client.async_get_device_info()
         except SlideshowAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except SlideshowError as err:
             raise UpdateFailed(str(err)) from err
+
+        # Content entries change rarely and cost an extra request, so they are
+        # read on a slower cycle than the device status.
+        now = dt_util.utcnow()
+        if (
+            self._playlists_read is None
+            or now - self._playlists_read > PLAYLIST_REFRESH_INTERVAL
+        ):
+            await self.async_refresh_playlists()
+
+        return data
+
+    async def async_refresh_playlists(self) -> None:
+        """Re-read the playlists the player offers.
+
+        A failure here leaves the previous list in place: a momentarily
+        unreachable player should not empty the source list.
+        """
+        try:
+            content = await self.client.async_get_content()
+        except SlideshowError as err:
+            _LOGGER.debug("Could not read content entries: %s", err)
+            return
+
+        self.playlists = {
+            entry["name"]: entry["playlistId"]
+            for entry in content
+            if entry.get("name") and entry.get("playlistId") is not None
+        }
+        self._playlists_read = dt_util.utcnow()

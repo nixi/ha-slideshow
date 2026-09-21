@@ -18,7 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import DOMAIN
 
-from .const import BASE, DEVICE_INFO, USER_INPUT
+from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
 
 ENTITY = "media_player.frame"
 
@@ -26,6 +26,10 @@ ENTITY = "media_player.frame"
 async def _setup(hass: HomeAssistant, aioclient_mock, **overrides) -> None:
     """Set the integration up with a tweaked device status."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json={**DEVICE_INFO, **overrides})
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Frame",

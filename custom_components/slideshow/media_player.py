@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -21,12 +22,15 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .const import (
     ATTR_CAMERA_ENTITY_ID,
     ATTR_CLEAR_FOLDER,
+    ATTR_CONTENT_NAME,
     ATTR_DURATION,
     ATTR_FILE,
+    ATTR_FILENAME,
     ATTR_HTML,
     ATTR_LAYOUT_ID,
     ATTR_LAYOUT_NAME,
@@ -40,9 +44,13 @@ from .const import (
     ATTR_ZONE_ID,
     ATTR_ZONE_NAME,
     AUDIO_ZONE_ID,
+    CONF_PANEL_SECRET,
     CONF_SCREEN_OFF_LAYOUT,
     DEFAULT_MEDIA_DURATION,
+    DEFAULT_PANEL_CONTENT_NAME,
+    DEFAULT_PANEL_FILENAME,
     DEFAULT_SCREEN_OFF_LAYOUT,
+    SERVICE_INSTALL_PANEL,
     SERVICE_SET_LAYOUT,
     SERVICE_SET_PLAYLIST,
     SERVICE_SHOW_CAMERA,
@@ -53,6 +61,9 @@ from .const import (
 )
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
 from .entity import SlideshowEntity
+from .panel import panel_url_file_path
+
+_LOGGER = logging.getLogger(__name__)
 
 ZONE_SCHEMA = {
     vol.Optional(ATTR_ZONE_ID): cv.string,
@@ -144,6 +155,16 @@ async def async_setup_entry(
         "async_show_camera",
     )
     platform.async_register_entity_service(
+        SERVICE_INSTALL_PANEL,
+        {
+            vol.Optional(
+                ATTR_CONTENT_NAME, default=DEFAULT_PANEL_CONTENT_NAME
+            ): cv.string,
+            vol.Optional(ATTR_FILENAME, default=DEFAULT_PANEL_FILENAME): cv.string,
+        },
+        "async_install_panel",
+    )
+    platform.async_register_entity_service(
         SERVICE_SYNCHRONIZE,
         {
             vol.Required(ATTR_URL): cv.string,
@@ -174,6 +195,7 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
         | MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.SELECT_SOURCE
     )
 
     def __init__(self, coordinator: SlideshowCoordinator) -> None:
@@ -217,6 +239,23 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
     def source(self) -> str | None:
         """Return the playlist the main zone is playing."""
         return self._data.get("currentPlaylist")
+
+    @property
+    def source_list(self) -> list[str]:
+        """Return the playlists the player offers."""
+        return sorted(self.coordinator.playlists)
+
+    async def async_select_source(self, source: str) -> None:
+        """Switch the main zone to a playlist by name."""
+        playlist_id = self.coordinator.playlists.get(source)
+        if playlist_id is None:
+            await self.coordinator.async_refresh_playlists()
+            playlist_id = self.coordinator.playlists.get(source)
+        if playlist_id is None:
+            raise HomeAssistantError(f"The player has no playlist named {source!r}")
+
+        await self.client.async_set_playlist(playlist_id=playlist_id)
+        await self.coordinator.async_request_refresh()
 
     @property
     def app_name(self) -> str | None:
@@ -436,6 +475,40 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             length=kwargs.get(ATTR_LENGTH),
         )
         await self.coordinator.async_request_refresh()
+
+    async def async_install_panel(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.install_panel`` action.
+
+        Puts the live dashboard into a playlist of its own, so it can be
+        chosen like any other. The player has no upload endpoint, so it is
+        told to synchronize a one-line .url file that Home Assistant serves,
+        and a content entry is created pointing at it.
+        """
+        secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
+        if not secret:
+            raise HomeAssistantError("This player has no panel secret yet")
+
+        try:
+            base = get_url(self.hass, allow_external=False, allow_cloud=False)
+        except NoURLAvailableError:
+            try:
+                base = get_url(self.hass, allow_cloud=False)
+            except NoURLAvailableError as err:
+                raise HomeAssistantError(
+                    "Home Assistant does not know its own address. Set the internal "
+                    "URL under Settings, System, Network."
+                ) from err
+
+        filename = kwargs[ATTR_FILENAME]
+        await self.client.async_synchronize(
+            f"{base}{panel_url_file_path(secret)}", filename
+        )
+        result = await self.client.async_create_content(
+            kwargs[ATTR_CONTENT_NAME], filename
+        )
+        # So the new playlist shows up in the select without waiting.
+        await self.coordinator.async_refresh_playlists()
+        _LOGGER.debug("Installed panel as content %s", result)
 
     async def async_synchronize(self, **kwargs: Any) -> None:
         """Handle the ``slideshow.synchronize`` service."""

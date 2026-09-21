@@ -16,6 +16,10 @@ DEFAULT_PASSWORD: Final = "admin"
 
 DEFAULT_SCAN_INTERVAL: Final = timedelta(seconds=30)
 MIN_SCAN_INTERVAL: Final = 5
+
+# Playlists are read on a slower cycle than the device status, since
+# content entries change rarely and cost an extra request.
+PLAYLIST_REFRESH_INTERVAL: Final = timedelta(minutes=5)
 MAX_SCAN_INTERVAL: Final = 3600
 
 CONF_SCAN_INTERVAL: Final = "scan_interval"
@@ -30,6 +34,7 @@ SERVICE_SET_PLAYLIST: Final = "set_playlist"
 SERVICE_SET_LAYOUT: Final = "set_layout"
 SERVICE_SYNCHRONIZE: Final = "synchronize"
 SERVICE_SHOW_CAMERA: Final = "show_camera"
+SERVICE_INSTALL_PANEL: Final = "install_panel"
 
 ATTR_FILE: Final = "file"
 ATTR_HTML: Final = "html"
@@ -47,6 +52,11 @@ ATTR_TARGET: Final = "target"
 ATTR_CLEAR_FOLDER: Final = "clear_folder"
 ATTR_CAMERA_ENTITY_ID: Final = "camera_entity_id"
 ATTR_DURATION: Final = "duration"
+ATTR_CONTENT_NAME: Final = "content_name"
+ATTR_FILENAME: Final = "filename"
+
+DEFAULT_PANEL_CONTENT_NAME: Final = "Home Assistant panel"
+DEFAULT_PANEL_FILENAME: Final = "ha_panel.url"
 
 # The audio playlist is addressed by this literal zone ID. Note the device
 # rejects the audio zone's *name*, so only the ID works.

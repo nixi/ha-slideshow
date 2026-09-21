@@ -177,6 +177,20 @@ class SlideshowClient:
         result = await self._request("GET", "content/get")
         return result.get("content", [])
 
+    async def async_create_content(
+        self, name: str, path: str, content_type: str = "ALPHABETICALLY"
+    ) -> dict[str, Any]:
+        """Create a content entry and return its ``id`` and ``playlistId``."""
+        return await self._request(
+            "POST",
+            "content/create",
+            {"name": name, "path": path, "type": content_type},
+        )
+
+    async def async_delete_content(self, content_id: int) -> None:
+        """Delete a content entry, which the device refuses if it is scheduled."""
+        await self._request("POST", "content/delete", {"id": content_id})
+
     async def async_get_last_synchronizations(self) -> list[dict[str, Any]]:
         """Return statistics about the five most recent file synchronisations."""
         result = await self._request("GET", "synchronize/last")
