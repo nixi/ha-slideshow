@@ -83,10 +83,12 @@ def build() -> Image.Image:
     stand.rectangle((452, 688, 572, 762), fill=(*DARK, 255))
     stand.rounded_rectangle((344, 762, 680, 820), radius=28, fill=(*DARK, 255))
 
-    # Trim to the drawn content and recentre on a square canvas.
+    # Trim to the drawn content and recentre on a square canvas. The brands
+    # repository requires the subject to touch the edges, so no margin is
+    # added beyond what squaring a non-square subject forces.
     bbox = icon.getbbox()
     content = icon.crop(bbox)
-    side = max(content.size) + 80
+    side = max(content.size)
     square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     square.paste(
         content,
