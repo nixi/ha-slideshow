@@ -4,6 +4,12 @@ A custom integration for [SlideShow](https://slideshow.digital/), the free digit
 app for Android. It talks to the player's local REST API, so everything stays on your
 network — no cloud account and no broker required.
 
+![A SlideShow player showing a live Home Assistant dashboard](docs/panel.png)
+
+*A player showing the live panel. Home Assistant renders the template and streams updates
+to it, so nothing reloads and no token ever reaches the display. The template behind this
+is [`docs/panel-example.jinja`](docs/panel-example.jinja).*
+
 ## What you get
 
 Each player is added as one Home Assistant device:
@@ -172,10 +178,16 @@ full access to state, and streams re-renders to the page over server-sent events
 swaps its own markup, so there is no reload and no flicker. Nothing needs a login, and no
 Home Assistant token is ever handed to the player.
 
+[`docs/panel-example.jinja`](docs/panel-example.jinja) is the template behind the
+screenshot at the top, and a reasonable starting point: weather and electricity price, room
+temperatures, door and alarm status, departures and an agenda. Only the six lists at the
+top need changing.
+
 **Setting it up**
 
-1. Open the integration's **Configure** dialog and edit **Panel template**. Only the lists
-   at the top need changing — point them at your own entities.
+1. Open the integration's **Configure** dialog and paste in a template — the shipped
+   default, or the example above. Only the lists at the top need changing — point them at
+   your own entities.
 2. Run `slideshow.install_panel`. The player has no upload endpoint, so Home Assistant
    serves a one-line `.url` file, tells the player to fetch it, and creates a content entry
    pointing at it. The dashboard then appears in the **Playlist** select like any other.
@@ -395,6 +407,9 @@ pytest tests/ --cov=custom_components.slideshow --cov-report=term-missing
 
 CI runs hassfest, HACS validation, ruff and the test suite on every push, with coverage
 held at 85% or above.
+
+`scripts/make_panel_screenshot.py` regenerates `docs/panel.png` from the real page shell
+and the example template, using invented data. Re-run it if the panel styling changes.
 
 `scripts/live_check.py` exercises the API client against a real player, including the
 error paths. It performs one deliberately no-op write:

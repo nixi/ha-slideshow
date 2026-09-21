@@ -1,0 +1,99 @@
+{#- A starting point for the live panel. Edit the six lists below to match
+    your own entities; nothing further down needs changing. -#}
+{%- set weather_entity = "weather.home" -%}
+{%- set price = "sensor.electricity_price" -%}
+{%- set temperatures = [
+     ("Living room", "sensor.living_room_temperature"),
+     ("Bedroom", "sensor.bedroom_temperature"),
+     ("Study", "sensor.study_temperature"),
+     ("Garden", "sensor.garden_temperature"),
+   ] -%}
+{%- set transit = "sensor.bus_stop_departures" -%}
+{%- set agenda = [
+     ("Gym", "calendar.gym"),
+     ("School", "calendar.school_lunch"),
+     ("Bins", "calendar.waste_collection"),
+   ] -%}
+{%- set status = [
+     ("Alarm", "alarm_control_panel.home", ["disarmed", "armed_away", "armed_home"]),
+     ("Front door", "lock.front_door", ["locked"]),
+     ("Garage", "lock.garage", ["locked"]),
+     ("Back door", "lock.back_door", ["locked"]),
+     ("Water leak", "binary_sensor.any_water_leak", ["off"]),
+   ] -%}
+
+<div class="ss-grid" style="grid-template-rows: 40% 1fr;">
+
+  <div class="ss-row">
+    <div class="ss-card" style="flex: 0 0 30%">
+      <div class="ss-label">Outside</div>
+      <div class="ss-big">{{ state_attr(weather_entity, "temperature") | round(1) }}&deg;</div>
+      <div class="ss-mid ss-muted">
+        {{ states(weather_entity) | replace("_", " ") | title }}
+      </div>
+      <div class="ss-muted" style="margin-top:.6vh">
+        {{ state_attr(weather_entity, "humidity") }}% &middot;
+        {{ states(price) }} {{ state_attr(price, "unit_of_measurement") or "" }}
+      </div>
+    </div>
+
+    <div class="ss-card">
+      <div class="ss-label">Temperature</div>
+      <ul class="ss-list">
+        {%- for name, eid in temperatures %}
+        {%- if states(eid) not in ["unknown", "unavailable"] %}
+        <li><span>{{ name }}</span>
+            <span>{{ states(eid) | float(0) | round(1) }} &deg;C</span></li>
+        {%- endif %}
+        {%- endfor %}
+      </ul>
+    </div>
+
+    <div class="ss-card" style="flex: 0 0 26%">
+      <div class="ss-label">Status</div>
+      <ul class="ss-list">
+        {%- for name, eid, good in status %}
+        {%- set value = states(eid) %}
+        <li><span>{{ name }}</span>
+            <span class="{{ 'ss-ok' if value in good else 'ss-bad' }}">
+              {{ value | replace("_", " ") | title }}</span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="ss-row">
+    <div class="ss-card">
+      <div class="ss-label">Departures</div>
+      <ul class="ss-list">
+        {%- for dep in (state_attr(transit, "upcoming") or [])[:4] %}
+        <li><span>{{ dep.line }} &middot; {{ dep.destination }}</span>
+            <span>{{ dep.time_formatted }}
+              <span class="ss-muted">{{ dep.minutes_until }} min</span></span></li>
+        {%- endfor %}
+        {%- if not (state_attr(transit, "upcoming") or []) %}
+        <li><span class="ss-muted">No departures</span></li>
+        {%- endif %}
+      </ul>
+    </div>
+
+    <div class="ss-card">
+      <div class="ss-label">Upcoming</div>
+      <ul class="ss-list">
+        {%- for name, eid in agenda %}
+        {%- set msg = state_attr(eid, "message") %}
+        {%- set start = state_attr(eid, "start_time") %}
+        {%- if msg %}
+        <li><span><span class="ss-muted">{{ name }}</span> {{ msg | truncate(38, true) }}</span>
+            <span class="ss-muted">
+              {{ as_datetime(start).strftime("%a %H:%M") if start else "" }}</span></li>
+        {%- endif %}
+        {%- endfor %}
+      </ul>
+    </div>
+  </div>
+
+</div>
+<div class="ss-label" style="position: fixed; bottom: 1.5vh; left: 3vw">
+  {{ now().strftime("%H:%M &middot; %a %-d %b") }}
+</div>
