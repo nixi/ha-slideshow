@@ -40,7 +40,9 @@ from .const import (
     ATTR_ZONE_ID,
     ATTR_ZONE_NAME,
     AUDIO_ZONE_ID,
+    CONF_SCREEN_OFF_LAYOUT,
     DEFAULT_MEDIA_DURATION,
+    DEFAULT_SCREEN_OFF_LAYOUT,
     SERVICE_SET_LAYOUT,
     SERVICE_SET_PLAYLIST,
     SERVICE_SHOW_CAMERA,
@@ -170,6 +172,8 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.BROWSE_MEDIA
         | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
+        | MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
     )
 
     def __init__(self, coordinator: SlideshowCoordinator) -> None:
@@ -230,6 +234,19 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
     def is_volume_muted(self) -> bool:
         """Return whether the device is muted."""
         return self._data.get("currentVolume") == 0
+
+    async def async_turn_on(self) -> None:
+        """Power the display on by dropping the layout override."""
+        await self.client.async_clear_layout()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self) -> None:
+        """Power the display down via the screen-off layout."""
+        layout = self.coordinator.config_entry.options.get(
+            CONF_SCREEN_OFF_LAYOUT, DEFAULT_SCREEN_OFF_LAYOUT
+        )
+        await self.client.async_set_layout(layout_name=layout)
+        await self.coordinator.async_request_refresh()
 
     async def async_media_pause(self) -> None:
         """Pause the main zone."""

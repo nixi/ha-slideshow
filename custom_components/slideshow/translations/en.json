@@ -43,11 +43,13 @@
         "data": {
           "scan_interval": "Polling interval",
           "panel_title": "Panel title",
-          "panel_template": "Panel template"
+          "panel_template": "Panel template",
+          "screen_off_layout": "Screen off layout"
         },
         "data_description": {
           "scan_interval": "How often to poll the player for its status. Lower values react faster but put more load on the device.",
-          "panel_template": "Jinja template rendered by Home Assistant and streamed to the panel whenever the entities it uses change. It only needs to produce markup — the page supplies the styling. Edit the lists at the top to match your own entities."
+          "panel_template": "Jinja template rendered by Home Assistant and streamed to the panel whenever the entities it uses change. It only needs to produce markup — the page supplies the styling. Edit the lists at the top to match your own entities.",
+          "screen_off_layout": "Name of the screen layout SlideShow shows while a layout schedule has the display powered down. Selecting it turns the screen off; clearing the layout turns it back on. Change this if your player reports a different name."
         },
         "description": "The live panel is a page Home Assistant serves for this player. Put the Panel URL sensor's value into a web page content item in SlideShow to show it permanently."
       }
@@ -156,6 +158,11 @@
       },
       "panel_url": {
         "name": "Panel URL"
+      }
+    },
+    "switch": {
+      "screen": {
+        "name": "Screen"
       }
     }
   },

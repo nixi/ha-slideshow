@@ -34,6 +34,7 @@ PLATFORMS: list[Platform] = [
     Platform.CAMERA,
     Platform.MEDIA_PLAYER,
     Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 

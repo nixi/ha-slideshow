@@ -36,12 +36,14 @@ from .const import (
     CONF_PANEL_TEMPLATE,
     CONF_PANEL_TITLE,
     CONF_SCAN_INTERVAL,
+    CONF_SCREEN_OFF_LAYOUT,
     CONF_VERIFY_SSL,
     DEFAULT_PANEL_TEMPLATE,
     DEFAULT_PANEL_TITLE,
     DEFAULT_PASSWORD,
     DEFAULT_PORT_HTTP,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SCREEN_OFF_LAYOUT,
     DEFAULT_USERNAME,
     DOMAIN,
     MAX_SCAN_INTERVAL,
@@ -190,6 +192,12 @@ class SlideshowOptionsFlow(OptionsFlow):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
+                    vol.Required(
+                        CONF_SCREEN_OFF_LAYOUT,
+                        default=options.get(
+                            CONF_SCREEN_OFF_LAYOUT, DEFAULT_SCREEN_OFF_LAYOUT
+                        ),
+                    ): str,
                     vol.Required(
                         CONF_PANEL_TITLE,
                         default=options.get(CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE),

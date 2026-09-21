@@ -1,0 +1,6 @@
+pytest-homeassistant-custom-component==0.13.366
+
+# Pulled in by the Home Assistant components this integration depends on:
+# camera imports turbojpeg at module level, and media_source needs mutagen.
+PyTurboJPEG==1.8.0
+mutagen==1.47.0

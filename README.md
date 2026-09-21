@@ -13,6 +13,7 @@ Each player is added as one Home Assistant device:
 | `media_player` | Pause, resume, next, previous, volume and mute for the main zone. Browses the Home Assistant media library, plays music and video, and accepts text-to-speech. Shows the current file, playlist and screen layout. |
 | `camera` | A live screenshot of what is actually on the display. |
 | `sensor` | Current playlist, screen layout, last displayed file and time, volume, screen brightness, free storage and storage used. Diagnostics for IP, versions, boot and app start time. |
+| `switch` | Screen power. There is no screen power endpoint, so this selects the layout SlideShow uses while a schedule has the display off, and reads the real state back from `screenPower`. The media player's turn on/off does the same. |
 | `binary_sensor` | Screen power, paused, plus diagnostics for rooted, device owner and lock task mode. |
 | `button` | Next, previous, toggle fullscreen, clear playlist, clear layout, activate and deactivate screensaver, beep, reload the app and reboot the device. |
 
@@ -265,6 +266,24 @@ The polling interval (30 seconds by default) can be changed under the integratio
 - Communication is local polling. SlideShow also offers MQTT, but it carries only a subset
   of the API (no screenshot, no pause/resume) and has no availability topic, so REST is
   used instead.
+
+## Development
+
+```sh
+python3.14 -m venv .venv && source .venv/bin/activate
+pip install -r requirements_test.txt
+pytest tests/ --cov=custom_components.slideshow --cov-report=term-missing
+```
+
+CI runs hassfest, HACS validation, ruff and the test suite on every push, with coverage
+held at 85% or above.
+
+`scripts/live_check.py` exercises the API client against a real player, including the
+error paths. It performs one deliberately no-op write:
+
+```sh
+SLIDESHOW_HOST=192.168.1.100 SLIDESHOW_PORT=8080 python scripts/live_check.py
+```
 
 ## Credits
 

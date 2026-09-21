@@ -58,6 +58,12 @@ CONF_PANEL_TEMPLATE: Final = "panel_template"
 CONF_PANEL_TITLE: Final = "panel_title"
 DEFAULT_PANEL_TITLE: Final = "SlideShow panel"
 
+# Screen power is driven by switching to the layout that SlideShow shows while a
+# screen layout schedule has it powered down. The name is configurable because
+# it follows the app's language.
+CONF_SCREEN_OFF_LAYOUT: Final = "screen_off_layout"
+DEFAULT_SCREEN_OFF_LAYOUT: Final = "Screen power off"
+
 # Streams and remote media have no length known to Home Assistant, so a
 # generous default is used and the stream is expected to end on its own.
 DEFAULT_MEDIA_DURATION: Final = 3600

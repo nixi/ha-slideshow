@@ -7,3 +7,6 @@ venv/
 .coverage
 .DS_Store
 samples.zip
+.coverage
+coverage.xml
+htmlcov/
