@@ -35,6 +35,8 @@ SERVICE_SET_LAYOUT: Final = "set_layout"
 SERVICE_SYNCHRONIZE: Final = "synchronize"
 SERVICE_SHOW_CAMERA: Final = "show_camera"
 SERVICE_INSTALL_PANEL: Final = "install_panel"
+SERVICE_CREATE_CONTENT: Final = "create_content"
+SERVICE_DELETE_CONTENT: Final = "delete_content"
 
 ATTR_FILE: Final = "file"
 ATTR_HTML: Final = "html"
@@ -54,6 +56,23 @@ ATTR_CAMERA_ENTITY_ID: Final = "camera_entity_id"
 ATTR_DURATION: Final = "duration"
 ATTR_CONTENT_NAME: Final = "content_name"
 ATTR_FILENAME: Final = "filename"
+ATTR_CONTENT_ID: Final = "content_id"
+ATTR_CONTENT_TYPE: Final = "content_type"
+ATTR_PATH: Final = "path"
+
+# The content types the device accepts. A file or folder uses one of the
+# ordering types; everything else is a generated or streamed source.
+CONTENT_TYPES: Final = [
+    "ALPHABETICALLY",
+    "RANDOM",
+    "STREAM",
+    "DATE_TIME",
+    "WEATHER",
+    "RSS",
+    "TEXT",
+    "VIDEO_INPUT",
+    "YOUTUBE",
+]
 
 DEFAULT_PANEL_CONTENT_NAME: Final = "Home Assistant panel"
 DEFAULT_PANEL_FILENAME: Final = "ha_panel.url"

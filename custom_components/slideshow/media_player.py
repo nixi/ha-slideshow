@@ -17,7 +17,7 @@ from homeassistant.components.media_player import (
     MediaType,
     async_process_play_media_url,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
@@ -27,7 +27,9 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 from .const import (
     ATTR_CAMERA_ENTITY_ID,
     ATTR_CLEAR_FOLDER,
+    ATTR_CONTENT_ID,
     ATTR_CONTENT_NAME,
+    ATTR_CONTENT_TYPE,
     ATTR_DURATION,
     ATTR_FILE,
     ATTR_FILENAME,
@@ -36,6 +38,7 @@ from .const import (
     ATTR_LAYOUT_NAME,
     ATTR_LENGTH,
     ATTR_METHOD,
+    ATTR_PATH,
     ATTR_PLAYLIST_ID,
     ATTR_PLAYLIST_NAME,
     ATTR_PLAYLIST_NUMBER,
@@ -46,10 +49,13 @@ from .const import (
     AUDIO_ZONE_ID,
     CONF_PANEL_SECRET,
     CONF_SCREEN_OFF_LAYOUT,
+    CONTENT_TYPES,
     DEFAULT_MEDIA_DURATION,
     DEFAULT_PANEL_CONTENT_NAME,
     DEFAULT_PANEL_FILENAME,
     DEFAULT_SCREEN_OFF_LAYOUT,
+    SERVICE_CREATE_CONTENT,
+    SERVICE_DELETE_CONTENT,
     SERVICE_INSTALL_PANEL,
     SERVICE_SET_LAYOUT,
     SERVICE_SET_PLAYLIST,
@@ -153,6 +159,23 @@ async def async_setup_entry(
             **ZONE_SCHEMA,
         },
         "async_show_camera",
+    )
+    platform.async_register_entity_service(
+        SERVICE_CREATE_CONTENT,
+        {
+            vol.Required(ATTR_CONTENT_NAME): cv.string,
+            vol.Required(ATTR_PATH): cv.string,
+            vol.Optional(ATTR_CONTENT_TYPE, default="ALPHABETICALLY"): vol.In(
+                CONTENT_TYPES
+            ),
+        },
+        "async_create_content",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    platform.async_register_entity_service(
+        SERVICE_DELETE_CONTENT,
+        {vol.Required(ATTR_CONTENT_ID): vol.Coerce(int)},
+        "async_delete_content",
     )
     platform.async_register_entity_service(
         SERVICE_INSTALL_PANEL,
@@ -475,6 +498,28 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             length=kwargs.get(ATTR_LENGTH),
         )
         await self.coordinator.async_request_refresh()
+
+    async def async_create_content(self, **kwargs: Any) -> ServiceResponse:
+        """Handle the ``slideshow.create_content`` action.
+
+        Returns the new content and playlist IDs, and refreshes the playlist
+        list so the entry is selectable straight away.
+        """
+        result = await self.client.async_create_content(
+            kwargs[ATTR_CONTENT_NAME],
+            kwargs[ATTR_PATH],
+            kwargs[ATTR_CONTENT_TYPE],
+        )
+        await self.coordinator.async_refresh_playlists()
+        return {
+            "content_id": result.get("id"),
+            "playlist_id": result.get("playlistId"),
+        }
+
+    async def async_delete_content(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.delete_content`` action."""
+        await self.client.async_delete_content(kwargs[ATTR_CONTENT_ID])
+        await self.coordinator.async_refresh_playlists()
 
     async def async_install_panel(self, **kwargs: Any) -> None:
         """Handle the ``slideshow.install_panel`` action.

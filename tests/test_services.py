@@ -125,3 +125,72 @@ async def test_install_panel_pulls_the_url_file_and_creates_content(
 
     # The new playlist is picked up without waiting for the slow refresh.
     assert "Home Assistant panel" in init_integration.runtime_data.playlists
+
+
+async def test_create_content_returns_the_new_ids(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Creating content answers with its content and playlist IDs."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(
+        re.compile(r"/ajax/content/create"),
+        json={"success": True, "result": {"id": 34, "playlistId": 35}},
+    )
+    aioclient_mock.get(
+        re.compile(r"/ajax/content/get"),
+        json={"success": True, "result": {"content": [
+            {"id": 34, "playlistId": 35, "name": "Holiday photos",
+             "path": "photos/holiday", "type": "ALPHABETICALLY"},
+        ]}},
+    )
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "create_content",
+        {ATTR_ENTITY_ID: ENTITY, "content_name": "Holiday photos",
+         "path": "photos/holiday"},
+        blocking=True,
+        return_response=True,
+    )
+
+    assert response[ENTITY] == {"content_id": 34, "playlist_id": 35}
+    call = next(c for c in aioclient_mock.mock_calls if "content/create" in str(c[1]))
+    assert call[1].query["type"] == "ALPHABETICALLY"
+    # The new playlist becomes selectable without waiting for the slow refresh.
+    assert "Holiday photos" in init_integration.runtime_data.playlists
+
+
+async def test_delete_content(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Deleting passes the content ID through."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(re.compile(r"/ajax/content/delete"), json={"success": True})
+    aioclient_mock.get(
+        re.compile(r"/ajax/content/get"),
+        json={"success": True, "result": {"content": []}},
+    )
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+
+    await hass.services.async_call(
+        DOMAIN, "delete_content", {ATTR_ENTITY_ID: ENTITY, "content_id": 34},
+        blocking=True,
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if "content/delete" in str(c[1]))
+    assert call[1].query["id"] == "34"
+
+
+async def test_unknown_content_type_is_rejected(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Only the types the device accepts are allowed through."""
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "create_content",
+            {ATTR_ENTITY_ID: ENTITY, "content_name": "x", "path": "y",
+             "content_type": "WEBPAGE"},
+            blocking=True,
+        )

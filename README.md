@@ -25,6 +25,7 @@ Each player is added as one Home Assistant device:
 - `slideshow.show_stream` — display a video stream
 - `slideshow.set_playlist` / `slideshow.set_layout` — switch playlist or screen layout
 - `slideshow.show_camera` — put a camera on the display
+- `slideshow.create_content` / `slideshow.delete_content` — manage what the player can play
 - `slideshow.install_panel` — add the live dashboard to the player as its own playlist
 - `slideshow.synchronize` — pull content from an external server
 
@@ -50,6 +51,116 @@ data:
 > default text colour is also black, so unstyled HTML shows up as a blank black screen
 > for the full duration. Set `color: #fff`, or give your own element a background such as
 > `<body style="background:#fff;color:#000">`.
+
+## Managing content and playlists
+
+### How SlideShow models this
+
+There is one idea to get straight, because it explains the whole API. A **content entry**
+is a source of things to play — a folder of photos, a single file, a weather screen, an
+RSS feed. Every content entry gets a **playlist** of its own, and the entry carries that
+playlist's ID.
+
+That is also the only way to enumerate playlists: the API has no list-playlists endpoint,
+so the **Playlist** select is built by reading the content entries and collecting their
+playlist IDs. Anything you create here shows up in that dropdown.
+
+### Creating content
+
+```yaml
+action: slideshow.create_content
+target:
+  entity_id: media_player.frame
+data:
+  content_name: Holiday photos
+  path: photos/holiday
+  content_type: ALPHABETICALLY
+response_variable: created
+```
+
+`created` then holds `content_id` and `playlist_id`, so you can switch to it immediately:
+
+```yaml
+action: slideshow.set_playlist
+target:
+  entity_id: media_player.frame
+data:
+  playlist_id: "{{ created.playlist_id }}"
+```
+
+### Content types
+
+| Type | What `path` means |
+| --- | --- |
+| `ALPHABETICALLY` | A folder or file on the player, played in name order |
+| `RANDOM` | The same, shuffled |
+| `STREAM` | The address of an HTTP or RTSP stream |
+| `YOUTUBE` | A YouTube video address |
+| `RSS` | A feed address |
+| `WEATHER`, `DATE_TIME`, `TEXT`, `VIDEO_INPUT` | Generated on the device; `path` carries that type's own setting |
+
+There is **no web page type** — SlideShow shows a web page by playing a text file whose
+contents are the address, saved with a `.url` extension. That is what `install_panel` does
+for you, and you can do the same for any page:
+
+```yaml
+# 1. Get the .url file onto the player. There is no upload endpoint, but the
+#    player can fetch one from any address it can reach.
+action: slideshow.synchronize
+target:
+  entity_id: media_player.frame
+data:
+  url: https://example.com/files/weather.url
+  target: weather.url
+
+# 2. Make it playable.
+action: slideshow.create_content
+target:
+  entity_id: media_player.frame
+data:
+  content_name: Weather page
+  path: weather.url
+  content_type: ALPHABETICALLY
+```
+
+### Removing content
+
+```yaml
+action: slideshow.delete_content
+target:
+  entity_id: media_player.frame
+data:
+  content_id: 34
+```
+
+The device refuses to delete an entry that a schedule still refers to.
+
+### A worked example: rotate a playlist by time of day
+
+```yaml
+automation:
+  - alias: Frame shows the dashboard in the morning
+    triggers:
+      - trigger: time
+        at: "06:30:00"
+    actions:
+      - action: select.select_option
+        target:
+          entity_id: select.frame_playlist
+        data:
+          option: Home Assistant panel
+
+  - alias: Frame goes back to photos in the evening
+    triggers:
+      - trigger: time
+        at: "19:00:00"
+    actions:
+      - action: select.select_option
+        target:
+          entity_id: select.frame_playlist
+        data:
+          option: All files in cycle
+```
 
 ## A live dashboard that stays on screen
 

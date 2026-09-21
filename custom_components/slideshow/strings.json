@@ -343,6 +343,34 @@
           "description": "Name of the .url file stored on the player."
         }
       }
+    },
+    "create_content": {
+      "name": "Create content",
+      "description": "Creates a content entry on the player and returns its content and playlist IDs. Each entry gets a playlist of its own, which then appears in the Playlist select.",
+      "fields": {
+        "content_name": {
+          "name": "Name",
+          "description": "Name for the entry."
+        },
+        "path": {
+          "name": "Path",
+          "description": "Folder or file within SlideShow for the ordering types, or the address for a stream, RSS feed or YouTube video."
+        },
+        "content_type": {
+          "name": "Type",
+          "description": "How the content is sourced."
+        }
+      }
+    },
+    "delete_content": {
+      "name": "Delete content",
+      "description": "Deletes a content entry. The device refuses if the entry is used in a schedule.",
+      "fields": {
+        "content_id": {
+          "name": "Content ID",
+          "description": "ID of the entry, as returned by Create content."
+        }
+      }
     }
   }
 }

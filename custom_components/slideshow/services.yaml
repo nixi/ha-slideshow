@@ -163,6 +163,51 @@ show_camera:
       selector:
         text:
 
+create_content:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    content_name:
+      required: true
+      example: Holiday photos
+      selector:
+        text:
+    path:
+      required: true
+      example: photos/holiday
+      selector:
+        text:
+    content_type:
+      default: ALPHABETICALLY
+      selector:
+        select:
+          options:
+            - ALPHABETICALLY
+            - RANDOM
+            - STREAM
+            - DATE_TIME
+            - WEATHER
+            - RSS
+            - TEXT
+            - VIDEO_INPUT
+            - YOUTUBE
+
+delete_content:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    content_id:
+      required: true
+      example: 34
+      selector:
+        number:
+          min: 1
+          mode: box
+
 install_panel:
   target:
     entity:
