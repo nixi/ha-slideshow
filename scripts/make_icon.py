@@ -94,7 +94,7 @@ def build() -> Image.Image:
 
 def main() -> int:
     """Write icon.png and icon@2x.png."""
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "brands")
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else "brand")
     out.mkdir(parents=True, exist_ok=True)
     icon = build()
     for name, size in (("icon.png", 256), ("icon@2x.png", 512)):
