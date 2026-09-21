@@ -6,6 +6,9 @@ with a #2D2D2D stand.
 
 Usage:
     python scripts/make_icon.py [output_dir]
+
+Writes to custom_components/slideshow/brand by default, which is where HACS
+looks for an integration's brand assets.
 """
 
 from __future__ import annotations
@@ -94,7 +97,8 @@ def build() -> Image.Image:
 
 def main() -> int:
     """Write icon.png and icon@2x.png."""
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "custom_components/slideshow/brand")
+    default = "custom_components/slideshow/brand"
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else default)
     out.mkdir(parents=True, exist_ok=True)
     icon = build()
     for name, size in (("icon.png", 256), ("icon@2x.png", 512)):
