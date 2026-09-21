@@ -344,21 +344,59 @@ python scripts/make_samples.py samples --width 1920 --height 1080
 
 ## Requirements
 
+- Home Assistant 2025.3 or newer (developed and tested against 2026.9)
 - SlideShow 4.11 or newer, with the web interface reachable from Home Assistant
 - The web interface username and password
 
 ## Installation
 
-### HACS (custom repository)
+> [!NOTE]
+> This is not in the HACS default store yet — the submission is
+> [hacs/default#11146](https://github.com/hacs/default/pull/11146). Until it is merged, add
+> it as a custom repository as described below. Nothing changes for you once it is merged;
+> it simply becomes searchable in HACS without step 2.
 
-1. In HACS, open the three-dot menu and choose **Custom repositories**.
-2. Add this repository's URL with the category **Integration**.
-3. Install **SlideShow Digital Signage** and restart Home Assistant.
+### With HACS
 
-### Manual
+1. Open **HACS** from the Home Assistant sidebar.
+2. Click the three dots in the top right, choose **Custom repositories**, paste
+   `https://github.com/nixi/ha-slideshow`, set the type to **Integration**, and click
+   **ADD**.
+3. Search for **SlideShow Digital Signage**, open it, and click **Download**.
+4. **Restart Home Assistant.** HACS only copies the files; the running instance keeps the
+   old code until it restarts.
 
-Copy `custom_components/slideshow` into your Home Assistant `config/custom_components`
-directory and restart.
+Updating later works the same way: HACS offers the new version, and you restart. HACS
+checks for updates on a slow cycle, so use **Update information** in the repository's
+three-dot menu if you want it to look straight away.
+
+### Manually
+
+1. Download **Source code (zip)** from the
+   [latest release](https://github.com/nixi/ha-slideshow/releases/latest) and extract it.
+2. Copy the `custom_components/slideshow` folder into your Home Assistant configuration
+   directory — the one holding `configuration.yaml`. Create `custom_components` if it is
+   not there. You should end up with:
+
+   ```
+   config/
+   ├── configuration.yaml
+   └── custom_components/
+       └── slideshow/
+           ├── __init__.py
+           ├── manifest.json
+           └── ...
+   ```
+
+3. **Restart Home Assistant.**
+
+Copy only the inner `slideshow` folder, not the whole repository — a
+`custom_components/ha-slideshow/custom_components/slideshow` nesting will not be found.
+
+### Adding your player
+
+After restarting, go to **Settings** → **Devices & services** → **Add integration** and
+search for **SlideShow**. See [Configuration](#configuration) for what to enter.
 
 ## Configuration
 
