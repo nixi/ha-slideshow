@@ -1,5 +1,7 @@
 """Tests for setting the integration up and tearing it down."""
 
+from unittest.mock import patch
+
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -45,10 +47,15 @@ async def test_panel_secret_is_generated_once(
     assert entry.data[CONF_PANEL_SECRET] == secret
 
 
-async def test_rejected_credentials_start_reauth(
+async def test_a_single_rejection_does_not_start_reauth(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
-    """A 303 to the login page must trigger reauth, not a silent success."""
+    """One rejection is retried rather than prompting the user.
+
+    A player rejects valid credentials for a moment while it restarts or is
+    reconfigured. Asking for a password that never changed is worse than
+    waiting a couple of polls.
+    """
     aioclient_mock.get(
         f"{BASE}/ajax/deviceInfo", status=303, headers={"Location": "/login"}
     )
@@ -59,7 +66,43 @@ async def test_rejected_credentials_start_reauth(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert not [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["context"]["source"] == "reauth"
+    ]
+
+
+async def test_persistent_rejection_starts_reauth(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Credentials that stay rejected do eventually prompt the user."""
+    from custom_components.slideshow.api import SlideshowAuthError
+    from custom_components.slideshow.const import AUTH_FAILURES_BEFORE_REAUTH
+    from custom_components.slideshow.coordinator import SlideshowCoordinator
+
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=DEVICE_INFO["deviceId"], data=dict(USER_INPUT)
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator: SlideshowCoordinator = entry.runtime_data
+    with patch.object(
+        coordinator.client,
+        "async_get_device_info",
+        side_effect=SlideshowAuthError("rejected"),
+    ):
+        for _ in range(AUTH_FAILURES_BEFORE_REAUTH):
+            await coordinator.async_refresh()
+
     assert any(
         flow["context"]["source"] == "reauth"
         for flow in hass.config_entries.flow.async_progress()

@@ -62,6 +62,21 @@ async def test_redirect_to_login_is_an_auth_error(
         await _client(hass).async_get_device_info()
 
 
+async def test_other_redirects_are_not_auth_failures(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Only a bounce to the login page means the credentials were rejected.
+
+    Treating every redirect as an auth failure would drag the user through
+    re-authentication for a password that never changed.
+    """
+    aioclient_mock.get(
+        f"{BASE}/ajax/deviceInfo", status=302, headers={"Location": "/somewhere-else"}
+    )
+    with pytest.raises(SlideshowApiError):
+        await _client(hass).async_get_device_info()
+
+
 @pytest.mark.parametrize("status", [401, 403])
 async def test_rejected_status_is_an_auth_error(
     hass: HomeAssistant, aioclient_mock, status: int

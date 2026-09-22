@@ -17,6 +17,11 @@ DEFAULT_PASSWORD: Final = "admin"
 DEFAULT_SCAN_INTERVAL: Final = timedelta(seconds=30)
 MIN_SCAN_INTERVAL: Final = 5
 
+# Consecutive rejections before Home Assistant asks for credentials again.
+# Players reject valid credentials briefly while restarting or being
+# reconfigured, and a prompt the user cannot act on is worse than a wait.
+AUTH_FAILURES_BEFORE_REAUTH: Final = 3
+
 # Playlists are read on a slower cycle than the device status, since
 # content entries change rarely and cost an extra request.
 PLAYLIST_REFRESH_INTERVAL: Final = timedelta(minutes=5)

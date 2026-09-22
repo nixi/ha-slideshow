@@ -27,6 +27,9 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=15)
 SCREENSHOT_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
+# Where the device sends a request whose credentials it did not accept.
+LOGIN_PATH = "/login"
+
 
 class SlideshowError(Exception):
     """Base error for all SlideShow API failures."""
@@ -113,14 +116,27 @@ class SlideshowClient:
                 ssl=self._ssl,
             )
             async with response:
-                # A redirect means the request was bounced to the login page.
                 if response.status in (
                     HTTPStatus.UNAUTHORIZED,
                     HTTPStatus.FORBIDDEN,
-                ) or 300 <= response.status < 400:
+                ):
                     raise SlideshowAuthError(
-                        "Authentication rejected by "
-                        f"{self._host} (HTTP {response.status})"
+                        f"Authentication rejected by {self._host} "
+                        f"(HTTP {response.status})"
+                    )
+                if 300 <= response.status < 400:
+                    # Rejected credentials are answered with a redirect to the
+                    # login page rather than a 401. A redirect somewhere else
+                    # is not an authentication problem, and must not drag the
+                    # user through re-authentication.
+                    location = response.headers.get("Location", "")
+                    if LOGIN_PATH in location:
+                        raise SlideshowAuthError(
+                            f"Authentication rejected by {self._host}: "
+                            f"redirected to {location}"
+                        )
+                    raise SlideshowApiError(
+                        f"{method} {path} was redirected to {location or 'nowhere'}"
                     )
                 if response.status >= 400:
                     body = (await response.text())[:200]

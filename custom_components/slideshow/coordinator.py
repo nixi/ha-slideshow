@@ -13,7 +13,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import SlideshowAuthError, SlideshowClient, SlideshowError
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, PLAYLIST_REFRESH_INTERVAL
+from .const import (
+    AUTH_FAILURES_BEFORE_REAUTH,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    PLAYLIST_REFRESH_INTERVAL,
+)
 
 if TYPE_CHECKING:
     from .panel import PanelRenderer
@@ -50,15 +55,33 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #: Playlist name to playlist ID, from the player's content entries.
         self.playlists: dict[str, int] = {}
         self._playlists_read: datetime | None = None
+        self._auth_failures = 0
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the current device status."""
         try:
             data = await self.client.async_get_device_info()
         except SlideshowAuthError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
+            # A player can reject perfectly good credentials for a moment --
+            # while it is starting up, or being reconfigured. Asking the user
+            # to re-enter a password that never changed is worse than waiting,
+            # so a rejection has to persist before reauthentication starts.
+            self._auth_failures += 1
+            if self._auth_failures >= AUTH_FAILURES_BEFORE_REAUTH:
+                raise ConfigEntryAuthFailed(str(err)) from err
+            _LOGGER.warning(
+                "%s rejected the stored credentials (%s of %s before "
+                "reauthentication): %s",
+                self.config_entry.title,
+                self._auth_failures,
+                AUTH_FAILURES_BEFORE_REAUTH,
+                err,
+            )
+            raise UpdateFailed(str(err)) from err
         except SlideshowError as err:
             raise UpdateFailed(str(err)) from err
+
+        self._auth_failures = 0
 
         # Content entries change rarely and cost an extra request, so they are
         # read on a slower cycle than the device status.
