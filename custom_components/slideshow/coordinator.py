@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import SlideshowAuthError, SlideshowClient, SlideshowError
 from .const import (
-    AUTH_FAILURES_BEFORE_REAUTH,
+    AUTH_GRACE_PERIOD,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLAYLIST_REFRESH_INTERVAL,
@@ -55,7 +55,7 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #: Playlist name to playlist ID, from the player's content entries.
         self.playlists: dict[str, int] = {}
         self._playlists_read: datetime | None = None
-        self._auth_failures = 0
+        self._auth_rejected_since: datetime | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the current device status."""
@@ -64,24 +64,27 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except SlideshowAuthError as err:
             # A player can reject perfectly good credentials for a moment --
             # while it is starting up, or being reconfigured. Asking the user
-            # to re-enter a password that never changed is worse than waiting,
+            # to retype a password that never changed is worse than waiting,
             # so a rejection has to persist before reauthentication starts.
-            self._auth_failures += 1
-            if self._auth_failures >= AUTH_FAILURES_BEFORE_REAUTH:
+            now = dt_util.utcnow()
+            if self._auth_rejected_since is None:
+                self._auth_rejected_since = now
+            rejected_for = now - self._auth_rejected_since
+            if rejected_for >= AUTH_GRACE_PERIOD:
                 raise ConfigEntryAuthFailed(str(err)) from err
             _LOGGER.warning(
-                "%s rejected the stored credentials (%s of %s before "
-                "reauthentication): %s",
+                "%s has rejected the stored credentials for %s; asking for new "
+                "ones if this continues past %s: %s",
                 self.config_entry.title,
-                self._auth_failures,
-                AUTH_FAILURES_BEFORE_REAUTH,
+                str(rejected_for).split(".")[0],
+                AUTH_GRACE_PERIOD,
                 err,
             )
             raise UpdateFailed(str(err)) from err
         except SlideshowError as err:
             raise UpdateFailed(str(err)) from err
 
-        self._auth_failures = 0
+        self._auth_rejected_since = None
 
         # Content entries change rarely and cost an extra request, so they are
         # read on a slower cycle than the device status.

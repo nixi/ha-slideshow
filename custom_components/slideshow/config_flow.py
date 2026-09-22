@@ -123,8 +123,23 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Start the re-authentication flow."""
-        return await self.async_step_reauth_confirm()
+        """Start the re-authentication flow.
+
+        The player may only have been restarting or mid-reconfiguration when
+        it turned the stored credentials away. If they work again by the time
+        anyone opens this, there is nothing worth asking.
+        """
+        entry = self._get_reauth_entry()
+        try:
+            await _async_validate(self.hass, entry.data)
+        except SlideshowError:
+            return await self.async_step_reauth_confirm()
+
+        _LOGGER.debug(
+            "%s accepted the stored credentials again; no reauthentication needed",
+            entry.title,
+        )
+        return self.async_update_reload_and_abort(entry, data=dict(entry.data))
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None

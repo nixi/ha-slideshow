@@ -1,14 +1,13 @@
 """Tests for setting the integration up and tearing it down."""
 
-from unittest.mock import patch
-
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import CONF_PANEL_SECRET, DOMAIN
 
-from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
+from .const import BASE, CONTENT, DEVICE_INFO, HOST, PORT, USER_INPUT
 
 
 async def test_setup_and_unload(hass: HomeAssistant, init_integration) -> None:
@@ -74,39 +73,78 @@ async def test_a_single_rejection_does_not_start_reauth(
     ]
 
 
-async def test_persistent_rejection_starts_reauth(
+async def test_rejection_becomes_reauth_only_after_the_grace_period(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
-    """Credentials that stay rejected do eventually prompt the user."""
-    from custom_components.slideshow.api import SlideshowAuthError
-    from custom_components.slideshow.const import AUTH_FAILURES_BEFORE_REAUTH
+    """A rejection is retried for a while, then asks the user.
+
+    Exercised on the coordinator directly: a failing setup never assigns
+    runtime_data, so there would be no coordinator to reach afterwards.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    from custom_components.slideshow.api import SlideshowClient
+    from custom_components.slideshow.const import AUTH_GRACE_PERIOD
     from custom_components.slideshow.coordinator import SlideshowCoordinator
 
-    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
     aioclient_mock.get(
-        f"{BASE}/ajax/content/get",
-        json={"success": True, "result": {"content": CONTENT}},
+        f"{BASE}/ajax/deviceInfo", status=303, headers={"Location": "/login"}
     )
     entry = MockConfigEntry(
         domain=DOMAIN, unique_id=DEVICE_INFO["deviceId"], data=dict(USER_INPUT)
     )
     entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-
-    coordinator: SlideshowCoordinator = entry.runtime_data
-    with patch.object(
-        coordinator.client,
-        "async_get_device_info",
-        side_effect=SlideshowAuthError("rejected"),
-    ):
-        for _ in range(AUTH_FAILURES_BEFORE_REAUTH):
-            await coordinator.async_refresh()
-
-    assert any(
-        flow["context"]["source"] == "reauth"
-        for flow in hass.config_entries.flow.async_progress()
+    client = SlideshowClient(
+        async_get_clientsession(hass), HOST, PORT, "admin", "admin"
     )
+    coordinator = SlideshowCoordinator(hass, entry, client)
+
+    # Inside the grace period: retried, and the user is left alone.
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    # Past it, still rejected: now worth asking.
+    coordinator._auth_rejected_since -= AUTH_GRACE_PERIOD
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+async def test_recovery_clears_the_rejection(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A player that starts accepting again resets the clock."""
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    from custom_components.slideshow.api import SlideshowClient
+    from custom_components.slideshow.coordinator import SlideshowCoordinator
+
+    aioclient_mock.get(
+        f"{BASE}/ajax/deviceInfo", status=303, headers={"Location": "/login"}
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=DEVICE_INFO["deviceId"], data=dict(USER_INPUT)
+    )
+    entry.add_to_hass(hass)
+    coordinator = SlideshowCoordinator(
+        hass, entry,
+        SlideshowClient(async_get_clientsession(hass), HOST, PORT, "admin", "admin"),
+    )
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator._auth_rejected_since is not None
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+    await coordinator._async_update_data()
+    assert coordinator._auth_rejected_since is None
 
 
 async def test_unreachable_player_retries(hass: HomeAssistant, aioclient_mock) -> None:

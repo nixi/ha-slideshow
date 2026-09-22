@@ -7,6 +7,7 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from custom_components.slideshow.api import SlideshowAuthError
 from custom_components.slideshow.const import DOMAIN
 
 from .const import BASE, DEVICE_INFO, USER_INPUT
@@ -72,20 +73,39 @@ async def test_duplicate_player_is_rejected(
     assert result["reason"] == "already_configured"
 
 
-async def test_reauth_updates_credentials(
+async def test_reauth_resolves_itself_when_the_player_recovers(
     hass: HomeAssistant, aioclient_mock, mock_config_entry
 ) -> None:
-    """Reauth stores the new password on the existing entry."""
+    """A player that only stumbled should not make anyone retype a password."""
     mock_config_entry.add_to_hass(hass)
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
 
-    with patch("custom_components.slideshow.async_setup_entry", return_value=True):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"username": "admin", "password": "a-new-password"}
-        )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert mock_config_entry.data["password"] == "admin"
+
+
+async def test_reauth_asks_when_the_credentials_really_changed(
+    hass: HomeAssistant, aioclient_mock, mock_config_entry
+) -> None:
+    """A genuine rejection still prompts, and stores what is entered."""
+    mock_config_entry.add_to_hass(hass)
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+
+    # The stored credentials are refused; the new ones are accepted.
+    with patch(
+        "custom_components.slideshow.config_flow._async_validate",
+        side_effect=[SlideshowAuthError("nope"), DEVICE_INFO],
+    ):
+        result = await mock_config_entry.start_reauth_flow(hass)
+        assert result["step_id"] == "reauth_confirm"
+
+        with patch("custom_components.slideshow.async_setup_entry", return_value=True):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"username": "admin", "password": "a-new-password"}
+            )
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
