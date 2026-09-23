@@ -455,8 +455,3 @@ error paths. It performs one deliberately no-op write:
 ```sh
 SLIDESHOW_HOST=192.168.1.100 SLIDESHOW_PORT=8080 python scripts/live_check.py
 ```
-
-## Credits
-
-SlideShow is developed by [Miroslav Macík](https://slideshow.digital/) and is not
-affiliated with this integration.
