@@ -413,6 +413,12 @@ Go to **Settings → Devices & services → Add integration** and search for *Sl
 The polling interval (30 seconds by default) can be changed under the integration's
 **Configure** button.
 
+**If the player's address changes**, Home Assistant follows it on its own: address changes
+reported for a known device — by DHCP, or by a router integration such as UniFi — move the
+entry to the new address, after checking it is the same player. To change it by hand, use
+**Reconfigure** in the integration's menu. Avoid removing and re-adding the integration for
+this: that generates a new panel address and breaks every player showing the panel.
+
 ## Notes and limitations
 
 - **Playlists are discovered from the player's content entries**, each of which carries the
