@@ -16,6 +16,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     NumberSelector,
@@ -25,6 +26,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .api import (
     SlideshowAuthError,
@@ -116,6 +118,117 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
                 STEP_USER_SCHEMA, user_input
+            ),
+            errors=errors,
+        )
+
+    async def async_step_dhcp(
+        self, discovery_info: DhcpServiceInfo
+    ) -> ConfigFlowResult:
+        """Follow a known player to a new address.
+
+        Home Assistant reports address changes for devices already in the
+        device registry, including ones learned from a router integration such
+        as UniFi. Players usually get their address from DHCP, so without this
+        a new lease leaves the entry pointing at an address nobody answers on.
+        """
+        entry = self._entry_for_mac(discovery_info.macaddress)
+        if entry is None:
+            # The MAC is often randomised by Android, so there is no vendor
+            # prefix to discover new players by; only known ones are followed.
+            return self.async_abort(reason="not_supported")
+
+        new_host = discovery_info.ip
+        if entry.data.get(CONF_HOST) == new_host:
+            return self.async_abort(reason="already_configured")
+
+        # A player that is still answering at its configured address does not
+        # need moving, whatever the DHCP server now says.
+        try:
+            await _async_validate(self.hass, entry.data)
+        except SlideshowError:
+            pass
+        else:
+            return self.async_abort(reason="already_configured")
+
+        # Check the new address really is this player before moving to it. If
+        # nothing answers there yet -- the app may still be starting -- the MAC
+        # match from the device registry is trusted instead.
+        try:
+            info = await _async_validate(
+                self.hass, {**entry.data, CONF_HOST: new_host}
+            )
+        except SlideshowError:
+            info = None
+        if info is not None and info.get("deviceId") != entry.unique_id:
+            _LOGGER.warning(
+                "%s reports a different player (%s) than %s expects; not moving",
+                new_host,
+                info.get("deviceId"),
+                entry.title,
+            )
+            return self.async_abort(reason="already_configured")
+
+        _LOGGER.info(
+            "%s moved from %s to %s", entry.title, entry.data.get(CONF_HOST), new_host
+        )
+        return self.async_update_reload_and_abort(
+            entry,
+            data={**entry.data, CONF_HOST: new_host},
+            reason="already_configured",
+        )
+
+    def _entry_for_mac(self, mac: str) -> SlideshowConfigEntry | None:
+        """Return this integration's entry owning the device with this MAC."""
+        registry = dr.async_get(self.hass)
+        for device in registry.async_get_devices(
+            connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))}
+        ):
+            for entry_id in device.config_entries:
+                entry = self.hass.config_entries.async_get_entry(entry_id)
+                if entry is not None and entry.domain == DOMAIN:
+                    return entry
+        return None
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the address a player is reached at, keeping everything else.
+
+        Removing and re-adding the integration would work too, but it would
+        also generate a new panel secret and break every player showing it.
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data = {**entry.data, **user_input}
+            try:
+                info = await _async_validate(self.hass, data)
+            except SlideshowAuthError:
+                errors["base"] = "invalid_auth"
+            except SlideshowConnectionError:
+                errors["base"] = "cannot_connect"
+            except SlideshowError:
+                _LOGGER.exception("Unexpected error talking to SlideShow")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(info.get("deviceId"))
+                self._abort_if_unique_id_mismatch(reason="wrong_device")
+                return self.async_update_reload_and_abort(entry, data=data)
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_PORT): int,
+                vol.Required(CONF_SSL): bool,
+                vol.Required(CONF_VERIFY_SSL): bool,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, user_input or entry.data
             ),
             errors=errors,
         )

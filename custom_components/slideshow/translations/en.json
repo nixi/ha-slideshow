@@ -23,6 +23,16 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Change the player's address",
+        "description": "Use this if the player's IP address or port has changed. The panel address and all entities are kept.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "ssl": "Use HTTPS",
+          "verify_ssl": "Verify the SSL certificate"
+        }
       }
     },
     "error": {
@@ -33,7 +43,10 @@
     },
     "abort": {
       "already_configured": "This player is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "The player's address was updated.",
+      "wrong_device": "That address belongs to a different SlideShow player than this one.",
+      "not_supported": "This device is not a configured SlideShow player."
     }
   },
   "options": {

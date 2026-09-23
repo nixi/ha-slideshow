@@ -12,6 +12,11 @@
     "http",
     "media_source"
   ],
+  "dhcp": [
+    {
+      "registered_devices": true
+    }
+  ],
   "documentation": "https://github.com/nixi/ha-slideshow",
   "integration_type": "device",
   "iot_class": "local_polling",
