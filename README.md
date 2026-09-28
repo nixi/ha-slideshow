@@ -188,7 +188,7 @@ top need changing.
 1. Open the integration's **Configure** dialog and paste in a template — the shipped
    default, or the example above. Only the lists at the top need changing — point them at
    your own entities.
-2. Run `slideshow.install_panel`. The player has no upload endpoint, so Home Assistant
+2. Run `slideshow.install_panel` (for example, via Settings - Tools - Actions). The player has no upload endpoint, so Home Assistant
    serves a one-line `.url` file, tells the player to fetch it, and creates a content entry
    pointing at it. The dashboard then appears in the **Playlist** select like any other.
 
@@ -358,7 +358,7 @@ python scripts/make_samples.py samples --width 1920 --height 1080
 
 ### With HACS
 
-1. Open **HACS** from the Home Assistant sidebar.
+1. Open [**HACS**](https://www.hacs.xyz/docs/use/configuration/basic/) from the Home Assistant sidebar.
 2. Click the three dots in the top right, choose **Custom repositories**, paste
    `https://github.com/nixi/ha-slideshow`, set the type to **Integration**, and click
    **ADD**.
