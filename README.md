@@ -33,6 +33,7 @@ Each player is added as one Home Assistant device:
 - `slideshow.show_camera` — put a camera on the display
 - `slideshow.create_content` / `slideshow.delete_content` — manage what the player can play
 - `slideshow.install_panel` — add the live dashboard to the player as its own playlist
+- `slideshow.get_panel_url` — return the live dashboard's address (administrators only)
 - `slideshow.synchronize` — pull content from an external server
 
 `show_html` is the interesting one: it lets you push a rendered Home Assistant template
@@ -192,8 +193,14 @@ top need changing.
    serves a one-line `.url` file, tells the player to fetch it, and creates a content entry
    pointing at it. The dashboard then appears in the **Playlist** select like any other.
 
-To do it by hand instead, copy the **Panel URL** sensor and add a content item of type
-**Web page** with that address in SlideShow's web interface.
+To do it by hand instead, run `slideshow.get_panel_url` as an administrator and add a
+content item of type **Web page** with the address it returns in SlideShow's web interface:
+
+```yaml
+action: slideshow.get_panel_url
+data:
+  config_entry_id: 01J...   # pick the player in the action editor
+```
 
 That item behaves like any other slide, so it survives reboots and app restarts, and it
 can share a rotation with your photos.
@@ -214,7 +221,7 @@ come out invisible the way sent HTML can. These classes are available: `ss-grid`
 
 > [!TIP]
 > Set **Internal URL** under Settings → System → Network. Without it Home Assistant only
-> knows the external address, and the Panel URL sensor has to hand the player an HTTPS URL
+> knows the external address, and the panel has to hand the player an HTTPS URL
 > it may not be able to load — older Android players often cannot manage a modern
 > certificate chain in their browser, even though media playback works fine.
 
@@ -222,7 +229,9 @@ come out invisible the way sent HTML can. These classes are available: `ss-grid`
 > The panel URL contains a secret generated for each player and is reachable **without a
 > Home Assistant login** — that is what lets the player load it. Anyone who has the URL can
 > see that page, so treat it as you would a share link. It exposes only what your template
-> renders, never an API token, and the rest of Home Assistant stays authenticated.
+> renders, never an API token, and the rest of Home Assistant stays authenticated. The
+> secret is kept out of entity states, history and diagnostics; only an administrator can
+> read it, through `slideshow.get_panel_url`.
 
 ### A reusable HTML slide
 

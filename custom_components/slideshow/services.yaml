@@ -223,6 +223,14 @@ install_panel:
       selector:
         text:
 
+get_panel_url:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: slideshow
+
 synchronize:
   target:
     entity:

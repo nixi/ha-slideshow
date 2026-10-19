@@ -22,6 +22,9 @@ async def test_identifiers_are_redacted(
     result = await get_diagnostics_for_config_entry(hass, hass_client, init_integration)
 
     assert result["entry"]["data"]["password"] != "admin"
+    # The secret alone opens the panel page, which needs no login.
+    assert result["entry"]["data"]["panel_secret"] != "test-secret"
+    assert "test-secret" not in str(result)
     assert result["entry"]["data"]["host"] != DEVICE_INFO["ipAddressInternal"]
     assert result["device_info"]["macAddress"] != DEVICE_INFO["macAddress"]
     assert result["device_info"]["serialNumber"] != DEVICE_INFO["serialNumber"]

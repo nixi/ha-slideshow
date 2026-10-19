@@ -6,7 +6,13 @@ from unittest.mock import patch
 import pytest
 import voluptuous as vol
 from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceValidationError,
+    Unauthorized,
+)
+from homeassistant.helpers.network import NoURLAvailableError
 
 from custom_components.slideshow.const import DOMAIN
 
@@ -193,4 +199,73 @@ async def test_unknown_content_type_is_rejected(
             {ATTR_ENTITY_ID: ENTITY, "content_name": "x", "path": "y",
              "content_type": "WEBPAGE"},
             blocking=True,
+        )
+
+
+async def test_get_panel_url_answers_an_administrator(
+    hass: HomeAssistant, init_integration, hass_admin_user
+) -> None:
+    """An administrator can read the panel address to add it by hand."""
+    hass.config.internal_url = "http://10.0.0.5:8123"
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "get_panel_url",
+        {"config_entry_id": init_integration.entry_id},
+        blocking=True,
+        return_response=True,
+        context=Context(user_id=hass_admin_user.id),
+    )
+
+    assert response == {"url": "http://10.0.0.5:8123/api/slideshow/panel/test-secret"}
+
+
+async def test_get_panel_url_refuses_other_users(
+    hass: HomeAssistant, init_integration, hass_read_only_user
+) -> None:
+    """The address carries the panel secret, so only administrators get it."""
+    hass.config.internal_url = "http://10.0.0.5:8123"
+
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_panel_url",
+            {"config_entry_id": init_integration.entry_id},
+            blocking=True,
+            return_response=True,
+            context=Context(user_id=hass_read_only_user.id),
+        )
+
+
+async def test_get_panel_url_rejects_an_unknown_entry(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """An entry that is not a loaded SlideShow player is refused."""
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_panel_url",
+            {"config_entry_id": "not-an-entry"},
+            blocking=True,
+            return_response=True,
+        )
+
+
+async def test_get_panel_url_needs_a_known_address(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """Without any Home Assistant URL the action explains what to set."""
+    with (
+        patch(
+            "custom_components.slideshow.panel.get_url",
+            side_effect=NoURLAvailableError,
+        ),
+        pytest.raises(HomeAssistantError, match="internal URL"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_panel_url",
+            {"config_entry_id": init_integration.entry_id},
+            blocking=True,
+            return_response=True,
         )

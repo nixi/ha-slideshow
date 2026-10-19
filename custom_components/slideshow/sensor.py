@@ -6,8 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
+)
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -16,14 +18,13 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_PANEL_SECRET
+from .const import DOMAIN
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
 from .entity import SlideshowEntity
-from .panel import panel_path
 
 
 def _timestamp_from_millis(data: dict[str, Any], key: str) -> datetime | None:
@@ -35,21 +36,18 @@ def _timestamp_from_millis(data: dict[str, Any], key: str) -> datetime | None:
 
 
 def _device_local_time(data: dict[str, Any], key: str) -> datetime | None:
-    """Parse a naive device-local timestamp using the device's own time zone."""
+    """Parse a timestamp the device reports in its own local time.
+
+    The result is usually naive; the sensor attaches the device's time zone,
+    which the coordinator has already resolved.
+    """
     value = data.get(key)
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value)
+        return datetime.fromisoformat(value)
     except (TypeError, ValueError):
         return None
-    if parsed.tzinfo is not None:
-        return parsed
-    try:
-        tzinfo = ZoneInfo(data["timeZone"])
-    except (KeyError, ZoneInfoNotFoundError, ValueError):
-        tzinfo = dt_util.get_default_time_zone()
-    return parsed.replace(tzinfo=tzinfo)
 
 
 def _storage_used_percent(data: dict[str, Any]) -> float | None:
@@ -178,11 +176,25 @@ async def async_setup_entry(
 ) -> None:
     """Set up the SlideShow sensors."""
     coordinator = entry.runtime_data
-    entities: list[SensorEntity] = [
+    _async_remove_panel_url_sensor(hass, entry)
+    async_add_entities(
         SlideshowSensor(coordinator, description) for description in SENSORS
-    ]
-    entities.append(SlideshowPanelUrlSensor(coordinator))
-    async_add_entities(entities)
+    )
+
+
+def _async_remove_panel_url_sensor(
+    hass: HomeAssistant, entry: SlideshowConfigEntry
+) -> None:
+    """Drop the Panel URL sensor that versions before 0.9.0 created.
+
+    Its state carried the panel secret, readable by every user, so it was
+    removed; the address is now handed out by the admin-only
+    ``slideshow.get_panel_url`` action instead.
+    """
+    registry = er.async_get(hass)
+    unique_id = f"{entry.unique_id or entry.entry_id}_panel_url"
+    if entity_id := registry.async_get_entity_id(SENSOR_DOMAIN, DOMAIN, unique_id):
+        registry.async_remove(entity_id)
 
 
 class SlideshowSensor(SlideshowEntity, SensorEntity):
@@ -203,46 +215,9 @@ class SlideshowSensor(SlideshowEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         """Return the current value."""
-        return self.entity_description.value_fn(self.coordinator.data or {})
+        value = self.entity_description.value_fn(self.coordinator.data or {})
+        # The player reports local times without an offset.
+        if isinstance(value, datetime) and value.tzinfo is None:
+            value = value.replace(tzinfo=self.coordinator.time_zone)
+        return value
 
-
-class SlideshowPanelUrlSensor(SlideshowEntity, SensorEntity):
-    """The address the player should load to show the live dashboard."""
-
-    _attr_translation_key = "panel_url"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator: SlideshowCoordinator) -> None:
-        """Initialise the sensor."""
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{self._device_id}_panel_url"
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the panel URL, or the path if no base URL is known.
-
-        Players are often old Android devices whose browser cannot manage a
-        modern certificate chain, so the LAN address is tried on its own first
-        and an external address is only a fallback.
-        """
-        secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
-        if not secret:
-            return None
-        path = panel_path(secret)
-        for options in (
-            {"allow_external": False, "allow_cloud": False},
-            {"allow_cloud": False},
-        ):
-            try:
-                return f"{get_url(self.hass, **options)}{path}"
-            except NoURLAvailableError:
-                continue
-        return path
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Expose the bare path, for building a URL by hand."""
-        secret = self.coordinator.config_entry.data.get(CONF_PANEL_SECRET)
-        if not secret:
-            return None
-        return {"path": panel_path(secret)}

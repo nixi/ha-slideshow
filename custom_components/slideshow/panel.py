@@ -43,6 +43,11 @@ URL_FILE_URL = "/api/slideshow/panel/{secret}/url"
 
 _VIEWS_REGISTERED = f"{DOMAIN}_panel_views"
 
+NO_URL_MESSAGE = (
+    "Home Assistant does not know its own address. Set the internal URL under "
+    "Settings, System, Network."
+)
+
 # Sent as an SSE comment so proxies and the player's browser keep the
 # connection open during quiet periods.
 HEARTBEAT_SECONDS = 25
@@ -247,12 +252,9 @@ class SlideshowPanelUrlFileView(http.HomeAssistantView):
         if _find_renderer(hass, secret) is None:
             return web.Response(status=404, text="Unknown panel")
         try:
-            base = get_url(hass, allow_external=False, allow_cloud=False)
+            base = panel_base_url(hass)
         except NoURLAvailableError:
-            try:
-                base = get_url(hass, allow_cloud=False)
-            except NoURLAvailableError:
-                return web.Response(status=503, text="No Home Assistant URL is known")
+            return web.Response(status=503, text="No Home Assistant URL is known")
         return web.Response(
             text=f"{base}{panel_path(secret)}\n",
             content_type="text/plain",
@@ -269,6 +271,20 @@ def async_register_views(hass: HomeAssistant) -> None:
     hass.http.register_view(SlideshowPanelEventsView())
     hass.http.register_view(SlideshowPanelUrlFileView())
     hass.data[_VIEWS_REGISTERED] = True
+
+
+def panel_base_url(hass: HomeAssistant) -> str:
+    """Return the Home Assistant address a player should use.
+
+    Players are often old Android devices whose browser cannot manage a
+    modern certificate chain, so the LAN address is tried on its own first
+    and an external address is only a fallback. Raises
+    ``NoURLAvailableError`` when neither is known.
+    """
+    try:
+        return get_url(hass, allow_external=False, allow_cloud=False)
+    except NoURLAvailableError:
+        return get_url(hass, allow_cloud=False)
 
 
 def panel_path(secret: str) -> str:

@@ -5,7 +5,10 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 
+import voluptuous as vol
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
+    ATTR_CONFIG_ENTRY_ID,
     CONF_HOST,
     CONF_PASSWORD,
     CONF_PORT,
@@ -13,8 +16,18 @@ from homeassistant.const import (
     CONF_USERNAME,
     Platform,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.network import NoURLAvailableError
+from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.helpers.typing import ConfigType
 
 from .api import SlideshowClient
 from .const import (
@@ -24,9 +37,19 @@ from .const import (
     CONF_VERIFY_SSL,
     DEFAULT_PANEL_TEMPLATE,
     DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    SERVICE_GET_PANEL_URL,
 )
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
-from .panel import PanelRenderer, async_register_views
+from .panel import (
+    NO_URL_MESSAGE,
+    PanelRenderer,
+    async_register_views,
+    panel_base_url,
+    panel_path,
+)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -37,6 +60,39 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the integration's admin-only actions."""
+
+    async def async_get_panel_url(call: ServiceCall) -> ServiceResponse:
+        """Return a player's panel address.
+
+        The address carries the secret that guards an unauthenticated page,
+        so it is only ever handed to an administrator, never kept in a state.
+        """
+        entry = hass.config_entries.async_get_entry(call.data[ATTR_CONFIG_ENTRY_ID])
+        if (
+            entry is None
+            or entry.domain != DOMAIN
+            or entry.state is not ConfigEntryState.LOADED
+        ):
+            raise ServiceValidationError("That SlideShow player is not loaded")
+        try:
+            base = panel_base_url(hass)
+        except NoURLAvailableError as err:
+            raise HomeAssistantError(NO_URL_MESSAGE) from err
+        return {"url": f"{base}{panel_path(entry.data[CONF_PANEL_SECRET])}"}
+
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        SERVICE_GET_PANEL_URL,
+        async_get_panel_url,
+        vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string}),
+        supports_response=SupportsResponse.ONLY,
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) -> bool:

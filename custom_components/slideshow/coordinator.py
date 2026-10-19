@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -56,6 +56,9 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.playlists: dict[str, int] = {}
         self._playlists_read: datetime | None = None
         self._auth_rejected_since: datetime | None = None
+        #: The player's own time zone, for the naive timestamps it reports.
+        self.time_zone: tzinfo = dt_util.get_default_time_zone()
+        self._time_zone_name: str | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the current device status."""
@@ -85,6 +88,7 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(str(err)) from err
 
         self._auth_rejected_since = None
+        await self._async_resolve_time_zone(data.get("timeZone"))
 
         # Content entries change rarely and cost an extra request, so they are
         # read on a slower cycle than the device status.
@@ -96,6 +100,23 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_refresh_playlists()
 
         return data
+
+    async def _async_resolve_time_zone(self, name: str | None) -> None:
+        """Look the player's time zone up once, whenever its name changes.
+
+        Loading a zone reads tzdata from disk, which must not happen on the
+        event loop, so it is done here rather than in the sensors. A name
+        Home Assistant does not know falls back to its own zone.
+        """
+        if name == self._time_zone_name:
+            return
+        self._time_zone_name = name
+        try:
+            zone = await dt_util.async_get_time_zone(name) if name else None
+        except ValueError:
+            # A malformed key, such as an absolute path.
+            zone = None
+        self.time_zone = zone or dt_util.get_default_time_zone()
 
     async def async_refresh_playlists(self) -> None:
         """Re-read the playlists the player offers.

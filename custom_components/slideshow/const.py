@@ -44,6 +44,7 @@ SERVICE_SHOW_CAMERA: Final = "show_camera"
 SERVICE_INSTALL_PANEL: Final = "install_panel"
 SERVICE_CREATE_CONTENT: Final = "create_content"
 SERVICE_DELETE_CONTENT: Final = "delete_content"
+SERVICE_GET_PANEL_URL: Final = "get_panel_url"
 
 ATTR_FILE: Final = "file"
 ATTR_HTML: Final = "html"

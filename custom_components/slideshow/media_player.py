@@ -22,7 +22,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.network import NoURLAvailableError, get_url
+from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import (
     ATTR_CAMERA_ENTITY_ID,
@@ -67,7 +67,7 @@ from .const import (
 )
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
 from .entity import SlideshowEntity
-from .panel import panel_url_file_path
+from .panel import NO_URL_MESSAGE, panel_base_url, panel_url_file_path
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -534,15 +534,9 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             raise HomeAssistantError("This player has no panel secret yet")
 
         try:
-            base = get_url(self.hass, allow_external=False, allow_cloud=False)
-        except NoURLAvailableError:
-            try:
-                base = get_url(self.hass, allow_cloud=False)
-            except NoURLAvailableError as err:
-                raise HomeAssistantError(
-                    "Home Assistant does not know its own address. Set the internal "
-                    "URL under Settings, System, Network."
-                ) from err
+            base = panel_base_url(self.hass)
+        except NoURLAvailableError as err:
+            raise HomeAssistantError(NO_URL_MESSAGE) from err
 
         filename = kwargs[ATTR_FILENAME]
         await self.client.async_synchronize(

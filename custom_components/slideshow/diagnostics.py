@@ -9,10 +9,12 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .api import SlideshowError
+from .const import CONF_PANEL_SECRET
 from .coordinator import SlideshowConfigEntry
 
 TO_REDACT = {
     CONF_HOST,
+    CONF_PANEL_SECRET,
     CONF_PASSWORD,
     CONF_USERNAME,
     "macAddress",
