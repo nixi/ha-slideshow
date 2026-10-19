@@ -71,13 +71,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         The address carries the secret that guards an unauthenticated page,
         so it is only ever handed to an administrator, never kept in a state.
         """
-        entry = hass.config_entries.async_get_entry(call.data[ATTR_CONFIG_ENTRY_ID])
-        if (
-            entry is None
-            or entry.domain != DOMAIN
-            or entry.state is not ConfigEntryState.LOADED
-        ):
-            raise ServiceValidationError("That SlideShow player is not loaded")
+        entry_id = call.data[ATTR_CONFIG_ENTRY_ID]
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            raise ServiceValidationError(
+                f"{entry_id} is not a SlideShow player's config entry ID"
+            )
+        if entry.state is not ConfigEntryState.LOADED:
+            raise ServiceValidationError(f"{entry.title} is not loaded")
         try:
             base = panel_base_url(hass)
         except NoURLAvailableError as err:

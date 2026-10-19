@@ -240,12 +240,28 @@ async def test_get_panel_url_refuses_other_users(
 async def test_get_panel_url_rejects_an_unknown_entry(
     hass: HomeAssistant, init_integration
 ) -> None:
-    """An entry that is not a loaded SlideShow player is refused."""
-    with pytest.raises(ServiceValidationError):
+    """An ID that is not a SlideShow entry is refused, and named."""
+    with pytest.raises(ServiceValidationError, match="not-an-entry"):
         await hass.services.async_call(
             DOMAIN,
             "get_panel_url",
             {"config_entry_id": "not-an-entry"},
+            blocking=True,
+            return_response=True,
+        )
+
+
+async def test_get_panel_url_rejects_an_unloaded_player(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """A player whose entry is not loaded has no panel to point at."""
+    await hass.config_entries.async_unload(init_integration.entry_id)
+
+    with pytest.raises(ServiceValidationError, match="Frame is not loaded"):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_panel_url",
+            {"config_entry_id": init_integration.entry_id},
             blocking=True,
             return_response=True,
         )

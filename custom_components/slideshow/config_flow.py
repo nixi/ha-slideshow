@@ -181,12 +181,10 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
     def _entry_for_mac(self, mac: str) -> SlideshowConfigEntry | None:
         """Return this integration's entry owning the device with this MAC."""
         registry = dr.async_get(self.hass)
-        for device in registry.async_get_devices(
-            connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))}
-        ):
-            for entry_id in device.config_entries:
-                entry = self.hass.config_entries.async_get_entry(entry_id)
-                if entry is not None and entry.domain == DOMAIN:
+        connection = (dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))
+        for entry in self._async_current_entries(include_ignore=False):
+            for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+                if connection in device.connections:
                     return entry
         return None
 

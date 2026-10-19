@@ -199,7 +199,7 @@ content item of type **Web page** with the address it returns in SlideShow's web
 ```yaml
 action: slideshow.get_panel_url
 data:
-  config_entry_id: 01J...   # pick the player in the action editor
+  config_entry_id: <the player's config entry ID>  # or pick the player in the UI editor
 ```
 
 That item behaves like any other slide, so it survives reboots and app restarts, and it
