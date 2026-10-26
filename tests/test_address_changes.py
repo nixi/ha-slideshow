@@ -7,6 +7,7 @@ from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from custom_components.slideshow.const import DOMAIN
 
+from .common import mock_status_reads
 from .const import CONTENT, DEVICE_INFO, PORT
 
 NEW_HOST = "192.0.2.99"
@@ -21,6 +22,7 @@ def _serve_new_address(aioclient_mock, device_info=DEVICE_INFO) -> None:
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", exc=TimeoutError())
     aioclient_mock.get(f"{NEW_BASE}/ajax/deviceInfo", json=device_info)
+    mock_status_reads(aioclient_mock, NEW_BASE)
     aioclient_mock.get(
         f"{NEW_BASE}/ajax/content/get",
         json={"success": True, "result": {"content": CONTENT}},

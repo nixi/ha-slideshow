@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import DOMAIN
 
+from .common import mock_status_reads
 from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
 
 ENTITY = "media_player.frame"
@@ -26,6 +27,7 @@ ENTITY = "media_player.frame"
 async def _setup(hass: HomeAssistant, aioclient_mock, **overrides) -> None:
     """Set the integration up with a tweaked device status."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json={**DEVICE_INFO, **overrides})
+    mock_status_reads(aioclient_mock)
     aioclient_mock.get(
         f"{BASE}/ajax/content/get",
         json={"success": True, "result": {"content": CONTENT}},
@@ -82,6 +84,7 @@ async def test_audio_plays_in_the_audio_zone(
     aioclient_mock.clear_requests()
     aioclient_mock.post(re.compile(r"/ajax/showStream"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         MP_DOMAIN,
@@ -105,6 +108,7 @@ async def test_video_takes_the_main_zone(hass: HomeAssistant, aioclient_mock) ->
     aioclient_mock.clear_requests()
     aioclient_mock.post(re.compile(r"/ajax/showStream"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         MP_DOMAIN,
@@ -119,3 +123,20 @@ async def test_video_takes_the_main_zone(hass: HomeAssistant, aioclient_mock) ->
 
     call = next(c for c in aioclient_mock.mock_calls if "showStream" in str(c[1]))
     assert "zoneId" not in call[1].query
+
+
+async def test_zones_are_listed(hass: HomeAssistant, aioclient_mock) -> None:
+    """Every zone, the audio zone included, shows what it is playing."""
+    await _setup(hass, aioclient_mock)
+
+    zones = hass.states.get(ENTITY).attributes["zones"]
+    assert zones[0] == {
+        "name": "Main",
+        "main": True,
+        "playlist": "All files in cycle",
+        "file": "room.url",
+        "position": "",
+        "paused": False,
+    }
+    assert zones[1]["name"] == "audio"
+    assert "file" not in zones[1]

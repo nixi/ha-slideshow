@@ -62,7 +62,7 @@
         "data_description": {
           "scan_interval": "How often to poll the player for its status. Lower values react faster but put more load on the device.",
           "panel_template": "Jinja template rendered by Home Assistant and streamed to the panel whenever the entities it uses change. It only needs to produce markup — the page supplies the styling. Edit the lists at the top to match your own entities.",
-          "screen_off_layout": "Name of the screen layout SlideShow shows while a layout schedule has the display powered down. Selecting it turns the screen off; clearing the layout turns it back on. Change this if your player reports a different name."
+          "screen_off_layout": "Used only where the player cannot switch its screen off directly. Name of the screen layout SlideShow shows while a layout schedule has the display powered down: selecting it turns the screen off, and clearing the layout turns it back on. From SlideShow 4.13.0 the layout is found by itself when no layout by this name exists."
         },
         "description": "The live panel is a page Home Assistant serves for this player. Run the Install panel action to add it to the player as a playlist of its own."
       }
@@ -168,6 +168,18 @@
       },
       "software_version": {
         "name": "SlideShow version"
+      },
+      "cpu_temperature": {
+        "name": "CPU temperature"
+      },
+      "operating_system": {
+        "name": "Operating system"
+      },
+      "webview_version": {
+        "name": "WebView version"
+      },
+      "last_user_activity": {
+        "name": "Last user activity"
       }
     },
     "switch": {
@@ -178,6 +190,14 @@
     "select": {
       "playlist": {
         "name": "Playlist"
+      },
+      "screen_layout": {
+        "name": "Screen layout"
+      }
+    },
+    "number": {
+      "screen_brightness": {
+        "name": "Screen brightness"
       }
     }
   },
@@ -201,6 +221,18 @@
         "zone_name": {
           "name": "Zone name",
           "description": "Name of the zone to display in. Defaults to the main zone."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Show the file once the current one finishes, instead of interrupting it."
+        },
+        "audio_track_id": {
+          "name": "Audio track ID",
+          "description": "Audio track to play, for videos with more than one."
+        },
+        "subtitle_track_id": {
+          "name": "Subtitle track ID",
+          "description": "Subtitle track to show, for videos with subtitles."
         }
       }
     },
@@ -293,6 +325,10 @@
         "length": {
           "name": "Length",
           "description": "How long to show the layout, in seconds. Omit to show until changed."
+        },
+        "permanent": {
+          "name": "Permanent",
+          "description": "Keep the layout, also after the app restarts, by storing it as an all-day schedule at the highest priority. This replaces other schedules at that priority. Cannot be combined with a length."
         }
       }
     },
@@ -389,6 +425,40 @@
         "content_id": {
           "name": "Content ID",
           "description": "ID of the entry, as returned by Create content."
+        }
+      }
+    },
+    "send_key": {
+      "name": "Send key",
+      "description": "Simulates a key press on the player. Usually needs a rooted device.",
+      "fields": {
+        "key_code": {
+          "name": "Key code",
+          "description": "Android key code, as a number such as 66 or a name such as KEYCODE_ENTER."
+        }
+      }
+    },
+    "tap": {
+      "name": "Tap",
+      "description": "Simulates a tap on the player's screen. Usually needs a rooted device.",
+      "fields": {
+        "x": {
+          "name": "X",
+          "description": "Horizontal position, in pixels from the left."
+        },
+        "y": {
+          "name": "Y",
+          "description": "Vertical position, in pixels from the top."
+        }
+      }
+    },
+    "start_app": {
+      "name": "Start app",
+      "description": "Starts another Android app installed on the player. Needs SlideShow 4.12.8 or later.",
+      "fields": {
+        "package_name": {
+          "name": "Package name",
+          "description": "Package name of the app, for example com.android.chrome."
         }
       }
     }

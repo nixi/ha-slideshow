@@ -18,6 +18,15 @@ show_file:
           max: 86400
           unit_of_measurement: s
           mode: box
+    wait:
+      selector:
+        boolean:
+    audio_track_id:
+      selector:
+        text:
+    subtitle_track_id:
+      selector:
+        text:
     zone_id:
       selector:
         text:
@@ -135,6 +144,10 @@ set_layout:
           max: 86400
           unit_of_measurement: s
           mode: box
+    permanent:
+      default: false
+      selector:
+        boolean:
 
 show_camera:
   target:
@@ -259,3 +272,52 @@ synchronize:
       default: false
       selector:
         boolean:
+
+send_key:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    key_code:
+      required: true
+      example: KEYCODE_ENTER
+      selector:
+        text:
+
+tap:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    x:
+      required: true
+      example: 640
+      selector:
+        number:
+          min: 0
+          max: 10000
+          unit_of_measurement: px
+          mode: box
+    y:
+      required: true
+      example: 400
+      selector:
+        number:
+          min: 0
+          max: 10000
+          unit_of_measurement: px
+          mode: box
+
+start_app:
+  target:
+    entity:
+      integration: slideshow
+      domain: media_player
+  fields:
+    package_name:
+      required: true
+      example: com.android.chrome
+      selector:
+        text:

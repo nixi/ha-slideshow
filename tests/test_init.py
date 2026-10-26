@@ -3,10 +3,12 @@
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.slideshow.const import CONF_PANEL_SECRET, DOMAIN
 
+from .common import mock_status_reads
 from .const import BASE, CONTENT, DEVICE_INFO, HOST, PORT, USER_INPUT
 
 
@@ -24,6 +26,7 @@ async def test_panel_secret_is_generated_once(
 ) -> None:
     """An entry made before the panel existed gets a secret on first load."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock)
     aioclient_mock.get(
         f"{BASE}/ajax/content/get",
         json={"success": True, "result": {"content": CONTENT}},
@@ -139,6 +142,7 @@ async def test_recovery_clears_the_rejection(
 
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock)
     aioclient_mock.get(
         f"{BASE}/ajax/content/get",
         json={"success": True, "result": {"content": CONTENT}},
@@ -158,3 +162,58 @@ async def test_unreachable_player_retries(hass: HomeAssistant, aioclient_mock) -
     await hass.async_block_till_done()
 
     assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_device_follows_an_app_update(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A new app version reaches the device page without a reload."""
+    registry = dr.async_get(hass)
+
+    def device() -> dr.DeviceEntry:
+        (entry,) = dr.async_entries_for_config_entry(
+            registry, init_integration.entry_id
+        )
+        return entry
+
+    assert device().sw_version == "4.12.7"
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(
+        f"{BASE}/ajax/deviceInfo",
+        json={**DEVICE_INFO, "softwareVersion": "4.13.0", "deviceName": "Hallway"},
+    )
+    await init_integration.runtime_data.async_refresh()
+
+    assert device().sw_version == "4.13.0"
+    assert device().name == "Hallway"
+
+
+async def test_older_player_without_new_endpoints(
+    hass: HomeAssistant, aioclient_mock, mock_config_entry
+) -> None:
+    """A player before 4.13.0 loads fine, without what it cannot offer."""
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+    for path in ("layout/get", "zone/content", "lastUserActivity"):
+        aioclient_mock.get(
+            f"{BASE}/ajax/{path}",
+            status=404,
+            json={"errorCode": "NOT_FOUND", "success": False},
+        )
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+    assert hass.states.get("select.frame_screen_layout") is None
+    assert hass.states.get("sensor.frame_last_user_activity") is None
+    assert hass.states.get("select.frame_playlist") is not None
+
+    # Missing endpoints are remembered, not asked for on every poll.
+    asked = aioclient_mock.call_count
+    await mock_config_entry.runtime_data.async_refresh()
+    assert aioclient_mock.call_count == asked + 1

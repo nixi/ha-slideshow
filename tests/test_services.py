@@ -16,6 +16,7 @@ from homeassistant.helpers.network import NoURLAvailableError
 
 from custom_components.slideshow.const import DOMAIN
 
+from .common import mock_status_reads
 from .const import DEVICE_INFO
 
 ENTITY = "media_player.frame"
@@ -26,6 +27,7 @@ async def test_show_html(hass: HomeAssistant, aioclient_mock, init_integration) 
     aioclient_mock.clear_requests()
     aioclient_mock.post(re.compile(r"/ajax/showSentHtml"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     markup = '<div style="color:#fff">Dinner is ready</div>'
     await hass.services.async_call(
@@ -55,6 +57,7 @@ async def test_set_playlist_by_name(
     aioclient_mock.clear_requests()
     aioclient_mock.put(re.compile(r"/ajax/playlist/set"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         DOMAIN,
@@ -74,6 +77,7 @@ async def test_show_camera_prefers_rtsp(
     aioclient_mock.clear_requests()
     aioclient_mock.post(re.compile(r"/ajax/showStream"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     with patch(
         "custom_components.slideshow.media_player.async_get_stream_source",
@@ -115,6 +119,7 @@ async def test_install_panel_pulls_the_url_file_and_creates_content(
         ]},
     })
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         DOMAIN, "install_panel", {ATTR_ENTITY_ID: ENTITY}, blocking=True
@@ -150,6 +155,7 @@ async def test_create_content_returns_the_new_ids(
         ]}},
     )
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     response = await hass.services.async_call(
         DOMAIN,
@@ -178,6 +184,7 @@ async def test_delete_content(
         json={"success": True, "result": {"content": []}},
     )
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         DOMAIN, "delete_content", {ATTR_ENTITY_ID: ENTITY, "content_id": 34},
@@ -285,3 +292,95 @@ async def test_get_panel_url_needs_a_known_address(
             blocking=True,
             return_response=True,
         )
+
+
+def _mock_refresh(aioclient_mock) -> None:
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
+
+
+async def test_show_file_can_wait(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A file can follow the one on screen instead of interrupting it."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(re.compile(r"/ajax/showFile"), json={"success": True})
+    _mock_refresh(aioclient_mock)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "show_file",
+        {ATTR_ENTITY_ID: ENTITY, "file": "film.mp4", "length": 60, "wait": True,
+         "audio_track_id": "2"},
+        blocking=True,
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if "showFile" in str(c[1]))
+    assert call[1].query["wait"] == "true"
+    assert call[1].query["audioTrackId"] == "2"
+    assert "subtitleTrackId" not in call[1].query
+
+
+async def test_permanent_layout_is_scheduled(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A permanent layout is stored as a schedule, not set as an override."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.put(re.compile(r"/ajax/schedule/layout/set"), json={"success": True})
+    _mock_refresh(aioclient_mock)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "set_layout",
+        {ATTR_ENTITY_ID: ENTITY, "layout_name": "Test", "permanent": True},
+        blocking=True,
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if "schedule/layout" in str(c[1]))
+    assert call[1].query["layoutName"] == "Test"
+    assert not any("/ajax/layout/set" in str(c[1]) for c in aioclient_mock.mock_calls)
+
+
+async def test_permanent_layout_has_no_length(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """A layout meant to stay cannot also be timed."""
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "set_layout",
+            {ATTR_ENTITY_ID: ENTITY, "layout_id": 33, "permanent": True,
+             "length": 60},
+            blocking=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("service", "data", "endpoint", "query"),
+    [
+        ("send_key", {"key_code": "KEYCODE_ENTER"}, "control/key",
+         {"keyCode": "KEYCODE_ENTER"}),
+        ("tap", {"x": 640, "y": 400}, "control/click", {"x": "640", "y": "400"}),
+        ("start_app", {"package_name": "com.android.chrome"}, "system/startApp",
+         {"packageName": "com.android.chrome"}),
+    ],
+)
+async def test_remote_control(
+    hass: HomeAssistant,
+    aioclient_mock,
+    init_integration,
+    service: str,
+    data: dict,
+    endpoint: str,
+    query: dict,
+) -> None:
+    """Key presses, taps and app starts pass straight through."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.put(re.compile(rf"/ajax/{endpoint}"), json={"success": True})
+
+    await hass.services.async_call(
+        DOMAIN, service, {ATTR_ENTITY_ID: ENTITY, **data}, blocking=True
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if endpoint in str(c[1]))
+    assert dict(call[1].query) == query

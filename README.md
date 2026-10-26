@@ -16,11 +16,12 @@ Each player is added as one Home Assistant device:
 
 | Entity | What it does |
 | --- | --- |
-| `select` | The playlist playing in the main zone, chosen by name. |
-| `media_player` | Pause, resume, next, previous, volume and mute for the main zone. Switches playlist through its source list. Browses the Home Assistant media library, plays music and video, and accepts text-to-speech. Shows the current file, playlist and screen layout. |
+| `select` | The playlist playing in the main zone, and the screen layout, each chosen by name. |
+| `media_player` | Pause, resume, next, previous, volume and mute for the main zone. Switches playlist through its source list. Browses the Home Assistant media library, plays music and video, and accepts text-to-speech. Shows the current file, playlist and screen layout, and what every zone is playing in a `zones` attribute. |
 | `camera` | A live screenshot of what is actually on the display. |
-| `sensor` | Current playlist, screen layout, last displayed file and time, volume, screen brightness, free storage and storage used. Diagnostics for IP, versions, boot and app start time. |
-| `switch` | Screen power. There is no screen power endpoint, so this selects the layout SlideShow uses while a schedule has the display off, and reads the real state back from `screenPower`. The media player's turn on/off does the same. |
+| `number` | Screen brightness. |
+| `sensor` | Current playlist, screen layout, last displayed file and time, last user activity, volume, screen brightness, free storage and storage used. Diagnostics for IP, versions, operating system, WebView, CPU temperature, boot and app start time. |
+| `switch` | Screen power, read back from `screenPower`. Devices whose screen SlideShow can drive — rooted ones and some signage displays — are switched directly. On the rest, this selects the layout SlideShow uses while a schedule has the display off. The media player's turn on/off does the same. |
 | `binary_sensor` | Screen power, paused, plus diagnostics for rooted, device owner and lock task mode. |
 | `button` | Next, previous, toggle fullscreen, clear playlist, clear layout, activate and deactivate screensaver, beep, reload the app and reboot the device. |
 
@@ -35,6 +36,11 @@ Each player is added as one Home Assistant device:
 - `slideshow.install_panel` — add the live dashboard to the player as its own playlist
 - `slideshow.get_panel_url` — return the live dashboard's address (administrators only)
 - `slideshow.synchronize` — pull content from an external server
+- `slideshow.send_key` / `slideshow.tap` — press a key or tap the screen (usually needs root)
+- `slideshow.start_app` — start another Android app on the player
+
+`set_layout` takes `permanent: true` to keep the layout after the app restarts, and
+`show_file` takes `wait: true` to show the file once the current one finishes.
 
 `show_html` is the interesting one: it lets you push a rendered Home Assistant template
 straight onto a wall display.
@@ -354,7 +360,9 @@ python scripts/make_samples.py samples --width 1920 --height 1080
 ## Requirements
 
 - Home Assistant 2025.3 or newer (developed and tested against 2026.9)
-- SlideShow 4.11 or newer, with the web interface reachable from Home Assistant
+- SlideShow 4.11 or newer, with the web interface reachable from Home Assistant. A few
+  things need a newer app, and are left out on an older one: the screen layout select
+  needs 4.13.0, and `start_app` needs 4.12.8.
 - The web interface username and password
 
 ## Installation
@@ -433,14 +441,16 @@ this: that generates a new panel address and breaks every player showing the pan
 - **Playlists are discovered from the player's content entries**, each of which carries the
   ID of the playlist it belongs to — there is no list-playlists endpoint. They are re-read
   every five minutes, so a playlist added on the device shows up shortly afterwards.
-- **Screen layouts cannot be listed**, so `set_layout` takes a name or ID that you supply.
-  You can find these in the SlideShow web interface.
+- **Screen layouts can be listed from SlideShow 4.13.0.** On older players `set_layout`
+  takes a name or ID that you supply, which you can find in the SlideShow web interface.
 - **Playlists set by `show_file`, `show_html` and media playback override the current
   playlist** for the duration you give, then the player returns to what it was doing. Use
   the *Clear playlist* button to cut an override short.
-- **Screen power and brightness are read-only.** The device reports them, but the public
-  API has no setter. Players commonly switch the screen off by moving to a dedicated
-  screen layout, which you can drive with `slideshow.set_layout`.
+- **Screen power and brightness can only be set where SlideShow can drive the screen**:
+  rooted devices and some signage displays. Elsewhere the device refuses, so the screen
+  switch falls back to the screen off layout and the brightness shows the device's reason.
+- **The last user activity** is a touch, a key press or a `screensaver/deactivate` call.
+  It is read on every poll, so it is only as fresh as the polling interval.
 - **HTTP Basic Authentication is sent in the clear** unless you enable HTTPS. Keep your
   players on a trusted network segment.
 - The `/ajax/shell` endpoint and the device-owner / lock-task endpoints are deliberately

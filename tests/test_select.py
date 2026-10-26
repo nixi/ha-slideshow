@@ -14,6 +14,7 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
+from .common import mock_status_reads
 from .const import DEVICE_INFO
 
 ENTITY = "select.frame_playlist"
@@ -35,6 +36,7 @@ async def test_selecting_uses_the_playlist_id(
     aioclient_mock.clear_requests()
     aioclient_mock.put(re.compile(r"/ajax/playlist/set"), json={"success": True})
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         SELECT_DOMAIN,
@@ -78,3 +80,35 @@ async def test_source_list_matches_the_select(
     """The media player offers the same playlists as a source list."""
     state = hass.states.get("media_player.frame")
     assert state.attributes["source_list"] == ["All files in cycle", "HA Template"]
+
+
+LAYOUT_ENTITY = "select.frame_screen_layout"
+
+
+async def test_layout_options_come_from_the_player(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """SlideShow 4.13.0 lists its layouts, so they can be chosen by name."""
+    state = hass.states.get(LAYOUT_ENTITY)
+    assert state.attributes["options"] == ["Default layout", "Screen power off", "Test"]
+    assert state.state == "Default layout"
+
+
+async def test_selecting_a_layout_uses_its_id(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A layout name is resolved to its ID before switching."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.put(re.compile(r"/ajax/layout/set"), json={"success": True})
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: LAYOUT_ENTITY, ATTR_OPTION: "Test"},
+        blocking=True,
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if "layout/set" in str(c[1]))
+    assert call[1].query["layoutId"] == "33"

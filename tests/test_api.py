@@ -15,6 +15,7 @@ from custom_components.slideshow.api import (
     SlideshowAuthError,
     SlideshowClient,
     SlideshowConnectionError,
+    SlideshowNotSupportedError,
 )
 
 from .const import BASE, DEVICE_INFO, HOST, PORT
@@ -157,3 +158,20 @@ async def test_unreachable_host_is_a_connection_error(
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", exc=TimeoutError())
     with pytest.raises(SlideshowConnectionError):
         await _client(hass).async_get_device_info()
+
+
+async def test_missing_endpoint_is_not_supported(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """An older app answers 404 for an endpoint it does not have."""
+    aioclient_mock.get(
+        f"{BASE}/ajax/layout/get",
+        status=404,
+        json={
+            "errorCode": "NOT_FOUND",
+            "errorMessage": "Operation 'layout/get' was not found",
+            "success": False,
+        },
+    )
+    with pytest.raises(SlideshowNotSupportedError):
+        await _client(hass).async_get_layouts()

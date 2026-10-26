@@ -27,6 +27,11 @@ AUTH_GRACE_PERIOD: Final = timedelta(minutes=10)
 # Playlists are read on a slower cycle than the device status, since
 # content entries change rarely and cost an extra request.
 PLAYLIST_REFRESH_INTERVAL: Final = timedelta(minutes=5)
+
+# The player reports seconds since the last touch, so the moment worked out
+# from it moves by a second or so between polls. Within this, it is the same
+# touch.
+ACTIVITY_JITTER: Final = timedelta(seconds=5)
 MAX_SCAN_INTERVAL: Final = 3600
 
 CONF_SCAN_INTERVAL: Final = "scan_interval"
@@ -45,6 +50,9 @@ SERVICE_INSTALL_PANEL: Final = "install_panel"
 SERVICE_CREATE_CONTENT: Final = "create_content"
 SERVICE_DELETE_CONTENT: Final = "delete_content"
 SERVICE_GET_PANEL_URL: Final = "get_panel_url"
+SERVICE_SEND_KEY: Final = "send_key"
+SERVICE_TAP: Final = "tap"
+SERVICE_START_APP: Final = "start_app"
 
 ATTR_FILE: Final = "file"
 ATTR_HTML: Final = "html"
@@ -67,6 +75,14 @@ ATTR_FILENAME: Final = "filename"
 ATTR_CONTENT_ID: Final = "content_id"
 ATTR_CONTENT_TYPE: Final = "content_type"
 ATTR_PATH: Final = "path"
+ATTR_PERMANENT: Final = "permanent"
+ATTR_WAIT: Final = "wait"
+ATTR_AUDIO_TRACK_ID: Final = "audio_track_id"
+ATTR_SUBTITLE_TRACK_ID: Final = "subtitle_track_id"
+ATTR_KEY_CODE: Final = "key_code"
+ATTR_X: Final = "x"
+ATTR_Y: Final = "y"
+ATTR_PACKAGE_NAME: Final = "package_name"
 
 # The content types the device accepts. A file or folder uses one of the
 # ordering types; everything else is a generated or streamed source.
@@ -95,9 +111,10 @@ CONF_PANEL_TEMPLATE: Final = "panel_template"
 CONF_PANEL_TITLE: Final = "panel_title"
 DEFAULT_PANEL_TITLE: Final = "SlideShow panel"
 
-# Screen power is driven by switching to the layout that SlideShow shows while a
-# screen layout schedule has it powered down. The name is configurable because
-# it follows the app's language.
+# Where the device cannot switch its screen directly, screen power is driven by
+# switching to the layout SlideShow shows while a screen layout schedule has it
+# powered down. The name follows the app's language, so it is configurable;
+# from SlideShow 4.13.0 the layout is also recognised by its power-off flag.
 CONF_SCREEN_OFF_LAYOUT: Final = "screen_off_layout"
 DEFAULT_SCREEN_OFF_LAYOUT: Final = "Screen power off"
 

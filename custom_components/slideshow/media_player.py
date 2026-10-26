@@ -25,6 +25,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import (
+    ATTR_AUDIO_TRACK_ID,
     ATTR_CAMERA_ENTITY_ID,
     ATTR_CLEAR_FOLDER,
     ATTR_CONTENT_ID,
@@ -34,36 +35,44 @@ from .const import (
     ATTR_FILE,
     ATTR_FILENAME,
     ATTR_HTML,
+    ATTR_KEY_CODE,
     ATTR_LAYOUT_ID,
     ATTR_LAYOUT_NAME,
     ATTR_LENGTH,
     ATTR_METHOD,
+    ATTR_PACKAGE_NAME,
     ATTR_PATH,
+    ATTR_PERMANENT,
     ATTR_PLAYLIST_ID,
     ATTR_PLAYLIST_NAME,
     ATTR_PLAYLIST_NUMBER,
+    ATTR_SUBTITLE_TRACK_ID,
     ATTR_TARGET,
     ATTR_URL,
+    ATTR_WAIT,
+    ATTR_X,
+    ATTR_Y,
     ATTR_ZONE_ID,
     ATTR_ZONE_NAME,
     AUDIO_ZONE_ID,
     CONF_PANEL_SECRET,
-    CONF_SCREEN_OFF_LAYOUT,
     CONTENT_TYPES,
     DEFAULT_MEDIA_DURATION,
     DEFAULT_PANEL_CONTENT_NAME,
     DEFAULT_PANEL_FILENAME,
-    DEFAULT_SCREEN_OFF_LAYOUT,
     SERVICE_CREATE_CONTENT,
     SERVICE_DELETE_CONTENT,
     SERVICE_INSTALL_PANEL,
+    SERVICE_SEND_KEY,
     SERVICE_SET_LAYOUT,
     SERVICE_SET_PLAYLIST,
     SERVICE_SHOW_CAMERA,
     SERVICE_SHOW_FILE,
     SERVICE_SHOW_HTML,
     SERVICE_SHOW_STREAM,
+    SERVICE_START_APP,
     SERVICE_SYNCHRONIZE,
+    SERVICE_TAP,
 )
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
 from .entity import SlideshowEntity
@@ -75,6 +84,23 @@ ZONE_SCHEMA = {
     vol.Optional(ATTR_ZONE_ID): cv.string,
     vol.Optional(ATTR_ZONE_NAME): cv.string,
 }
+
+# The zone fields worth showing; the device also reports the zone ID.
+ZONE_ATTRIBUTES = {
+    "name": "name",
+    "main": "main",
+    "playlist": "playlist",
+    "file": "fileName",
+    "position": "position",
+    "paused": "paused",
+}
+
+
+def _permanent_has_no_length(data: dict[str, Any]) -> dict[str, Any]:
+    """Reject a length on a layout that is meant to stay."""
+    if data.get(ATTR_PERMANENT) and ATTR_LENGTH in data:
+        raise vol.Invalid("A permanent screen layout cannot have a length")
+    return data
 
 
 async def async_setup_entry(
@@ -91,6 +117,9 @@ async def async_setup_entry(
         {
             vol.Required(ATTR_FILE): cv.string,
             vol.Required(ATTR_LENGTH): vol.All(vol.Coerce(int), vol.Range(min=1)),
+            vol.Optional(ATTR_WAIT): cv.boolean,
+            vol.Optional(ATTR_AUDIO_TRACK_ID): cv.string,
+            vol.Optional(ATTR_SUBTITLE_TRACK_ID): cv.string,
             **ZONE_SCHEMA,
         },
         "async_show_file",
@@ -143,9 +172,11 @@ async def async_setup_entry(
                     vol.Optional(ATTR_LENGTH): vol.All(
                         vol.Coerce(int), vol.Range(min=1)
                     ),
+                    vol.Optional(ATTR_PERMANENT, default=False): cv.boolean,
                 }
             ),
             cv.has_at_least_one_key(ATTR_LAYOUT_ID, ATTR_LAYOUT_NAME),
+            _permanent_has_no_length,
         ),
         "async_set_layout",
     )
@@ -196,6 +227,24 @@ async def async_setup_entry(
             vol.Optional(ATTR_CLEAR_FOLDER, default=False): cv.boolean,
         },
         "async_synchronize",
+    )
+    platform.async_register_entity_service(
+        SERVICE_SEND_KEY,
+        {vol.Required(ATTR_KEY_CODE): cv.string},
+        "async_send_key",
+    )
+    platform.async_register_entity_service(
+        SERVICE_TAP,
+        {
+            vol.Required(ATTR_X): vol.All(vol.Coerce(int), vol.Range(min=0)),
+            vol.Required(ATTR_Y): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        },
+        "async_tap",
+    )
+    platform.async_register_entity_service(
+        SERVICE_START_APP,
+        {vol.Required(ATTR_PACKAGE_NAME): cv.string},
+        "async_start_app",
     )
 
 
@@ -281,6 +330,22 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         await self.coordinator.async_request_refresh()
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return what every zone is playing, the audio zone included."""
+        if not self.coordinator.zones:
+            return None
+        return {
+            "zones": [
+                {
+                    attribute: zone[key]
+                    for attribute, key in ZONE_ATTRIBUTES.items()
+                    if key in zone
+                }
+                for zone in self.coordinator.zones
+            ]
+        }
+
+    @property
     def app_name(self) -> str | None:
         """Return the active screen layout."""
         return self._data.get("currentScreenLayout")
@@ -298,17 +363,12 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         return self._data.get("currentVolume") == 0
 
     async def async_turn_on(self) -> None:
-        """Power the display on by dropping the layout override."""
-        await self.client.async_clear_layout()
-        await self.coordinator.async_request_refresh()
+        """Power the display on, the same way as the screen switch."""
+        await self.coordinator.async_set_screen_power(True)
 
     async def async_turn_off(self) -> None:
-        """Power the display down via the screen-off layout."""
-        layout = self.coordinator.config_entry.options.get(
-            CONF_SCREEN_OFF_LAYOUT, DEFAULT_SCREEN_OFF_LAYOUT
-        )
-        await self.client.async_set_layout(layout_name=layout)
-        await self.coordinator.async_request_refresh()
+        """Power the display down, the same way as the screen switch."""
+        await self.coordinator.async_set_screen_power(False)
 
     async def async_media_pause(self) -> None:
         """Pause the main zone."""
@@ -455,6 +515,9 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             kwargs[ATTR_LENGTH],
             zone_id=kwargs.get(ATTR_ZONE_ID),
             zone_name=kwargs.get(ATTR_ZONE_NAME),
+            wait=kwargs.get(ATTR_WAIT),
+            audio_track_id=kwargs.get(ATTR_AUDIO_TRACK_ID),
+            subtitle_track_id=kwargs.get(ATTR_SUBTITLE_TRACK_ID),
         )
         await self.coordinator.async_request_refresh()
 
@@ -491,12 +554,22 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_layout(self, **kwargs: Any) -> None:
-        """Handle the ``slideshow.set_layout`` service."""
-        await self.client.async_set_layout(
-            layout_id=kwargs.get(ATTR_LAYOUT_ID),
-            layout_name=kwargs.get(ATTR_LAYOUT_NAME),
-            length=kwargs.get(ATTR_LENGTH),
-        )
+        """Handle the ``slideshow.set_layout`` service.
+
+        A permanent layout is stored as a schedule, so it outlasts an app
+        restart; otherwise it is an override that the next schedule replaces.
+        """
+        if kwargs.get(ATTR_PERMANENT):
+            await self.client.async_schedule_layout(
+                layout_id=kwargs.get(ATTR_LAYOUT_ID),
+                layout_name=kwargs.get(ATTR_LAYOUT_NAME),
+            )
+        else:
+            await self.client.async_set_layout(
+                layout_id=kwargs.get(ATTR_LAYOUT_ID),
+                layout_name=kwargs.get(ATTR_LAYOUT_NAME),
+                length=kwargs.get(ATTR_LENGTH),
+            )
         await self.coordinator.async_request_refresh()
 
     async def async_create_content(self, **kwargs: Any) -> ServiceResponse:
@@ -557,6 +630,18 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             method=kwargs.get(ATTR_METHOD, "GET"),
             clear_folder=kwargs.get(ATTR_CLEAR_FOLDER, False),
         )
+
+    async def async_send_key(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.send_key`` action."""
+        await self.client.async_send_key(kwargs[ATTR_KEY_CODE])
+
+    async def async_tap(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.tap`` action."""
+        await self.client.async_tap(kwargs[ATTR_X], kwargs[ATTR_Y])
+
+    async def async_start_app(self, **kwargs: Any) -> None:
+        """Handle the ``slideshow.start_app`` action."""
+        await self.client.async_start_app(kwargs[ATTR_PACKAGE_NAME])
 
 
 def _fullscreen_image_html(url: str) -> str:

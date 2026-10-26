@@ -8,6 +8,7 @@ from homeassistant.components.button import SERVICE_PRESS
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 
+from .common import mock_status_reads
 from .const import DEVICE_INFO
 
 
@@ -30,6 +31,7 @@ async def test_button_calls_its_endpoint(
     aioclient_mock.clear_requests()
     aioclient_mock.put(re.compile(re.escape(endpoint)), json={"success": True})
     aioclient_mock.get(re.compile(r"ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
         BUTTON_DOMAIN, SERVICE_PRESS, {ATTR_ENTITY_ID: entity}, blocking=True

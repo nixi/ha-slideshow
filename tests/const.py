@@ -64,3 +64,21 @@ CONTENT = [
     {"id": 33, "playlistId": 34, "type": "IMAGE", "name": "HA Template",
      "path": "ha.url"},
 ]
+
+# /ajax/layout/get, /ajax/zone/content and /ajax/lastUserActivity, from a real
+# player running SlideShow 4.13.0.
+LAYOUTS = [
+    {"name": "Default layout", "screensaver": False, "powerOff": False, "id": 1,
+     "rotation": {}},
+    {"name": "Screen power off", "screensaver": False, "powerOff": True, "id": 2,
+     "rotation": {}},
+    {"name": "Test", "screensaver": False, "powerOff": False, "id": 33,
+     "rotation": {"": 0}},
+]
+ZONES = [
+    {"id": 1, "name": "Main", "main": True, "playlist": "All files in cycle",
+     "fileName": "room.url", "position": "", "paused": False},
+    {"main": False, "name": "audio", "paused": False, "position": "",
+     "playlist": "Missing schedule"},
+]
+SECONDS_SINCE_USER_ACTIVITY = 107

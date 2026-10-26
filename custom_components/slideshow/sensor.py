@@ -16,7 +16,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfInformation,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -64,6 +69,8 @@ class SlideshowSensorDescription(SensorEntityDescription):
     """Describes a SlideShow sensor."""
 
     value_fn: Callable[[dict[str, Any]], Any]
+    #: Whether the player reports this value at all; checked at setup.
+    exists_fn: Callable[[dict[str, Any]], bool] = lambda data: True
 
 
 SENSORS: tuple[SlideshowSensorDescription, ...] = (
@@ -101,6 +108,17 @@ SENSORS: tuple[SlideshowSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.get("screenBrightness"),
+    ),
+    SlideshowSensorDescription(
+        key="cpu_temperature",
+        translation_key="cpu_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        exists_fn=lambda data: "cpuTemperature" in data,
+        value_fn=lambda data: data.get("cpuTemperature"),
     ),
     SlideshowSensorDescription(
         key="storage_free",
@@ -166,6 +184,22 @@ SENSORS: tuple[SlideshowSensorDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=lambda data: data.get("softwareVersion"),
     ),
+    SlideshowSensorDescription(
+        key="operating_system",
+        translation_key="operating_system",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        exists_fn=lambda data: "operatingSystem" in data,
+        value_fn=lambda data: data.get("operatingSystem"),
+    ),
+    SlideshowSensorDescription(
+        key="webview_version",
+        translation_key="webview_version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        exists_fn=lambda data: "webViewVersion" in data,
+        value_fn=lambda data: data.get("webViewVersion"),
+    ),
 )
 
 
@@ -177,9 +211,15 @@ async def async_setup_entry(
     """Set up the SlideShow sensors."""
     coordinator = entry.runtime_data
     _async_remove_panel_url_sensor(hass, entry)
-    async_add_entities(
-        SlideshowSensor(coordinator, description) for description in SENSORS
-    )
+    data = coordinator.data or {}
+    entities: list[SensorEntity] = [
+        SlideshowSensor(coordinator, description)
+        for description in SENSORS
+        if description.exists_fn(data)
+    ]
+    if coordinator.supports("lastUserActivity"):
+        entities.append(SlideshowLastActivitySensor(coordinator))
+    async_add_entities(entities)
 
 
 def _async_remove_panel_url_sensor(
@@ -221,3 +261,23 @@ class SlideshowSensor(SlideshowEntity, SensorEntity):
             value = value.replace(tzinfo=self.coordinator.time_zone)
         return value
 
+
+
+class SlideshowLastActivitySensor(SlideshowEntity, SensorEntity):
+    """When the screen was last touched or a key pressed.
+
+    Calling ``screensaver/deactivate`` counts as activity too.
+    """
+
+    _attr_translation_key = "last_user_activity"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: SlideshowCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_last_user_activity"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the moment of the last activity."""
+        return self.coordinator.last_user_activity

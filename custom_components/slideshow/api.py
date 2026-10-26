@@ -47,6 +47,10 @@ class SlideshowApiError(SlideshowError):
     """The device was reached but reported a failure."""
 
 
+class SlideshowNotSupportedError(SlideshowApiError):
+    """The player has no such endpoint, usually because its app is older."""
+
+
 def _clean_params(params: dict[str, Any] | None) -> dict[str, str]:
     """Drop unset parameters and render the rest the way the device expects."""
     if not params:
@@ -138,6 +142,10 @@ class SlideshowClient:
                     raise SlideshowApiError(
                         f"{method} {path} was redirected to {location or 'nowhere'}"
                     )
+                if response.status == HTTPStatus.NOT_FOUND:
+                    raise SlideshowNotSupportedError(
+                        f"{method} {path} is not offered by this player"
+                    )
                 if response.status >= 400:
                     body = (await response.text())[:200]
                     raise SlideshowApiError(
@@ -182,6 +190,24 @@ class SlideshowClient:
     async def async_get_zones(self) -> dict[str, str]:
         """Return the zones of the current screen layout, keyed by zone ID."""
         return await self._request("GET", "zones")
+
+    async def async_get_layouts(self) -> list[dict[str, Any]]:
+        """Return every screen layout, with its ID and power-off flag.
+
+        Added in SlideShow 4.13.0.
+        """
+        result = await self._request("GET", "layout/get")
+        return result.get("layouts", [])
+
+    async def async_get_zone_content(self) -> list[dict[str, Any]]:
+        """Return what each zone on screen, and the audio zone, is playing."""
+        result = await self._request("GET", "zone/content")
+        return result.get("zones", [])
+
+    async def async_get_seconds_since_user_activity(self) -> int:
+        """Return how long ago the screen was last touched or a key pressed."""
+        result = await self._request("GET", "lastUserActivity")
+        return int(result["secondsSinceLastActivity"])
 
     async def async_get_volume(self) -> int:
         """Return the current volume as a percentage."""
@@ -263,8 +289,16 @@ class SlideshowClient:
         length: int,
         zone_id: Any = None,
         zone_name: str | None = None,
+        *,
+        wait: bool | None = None,
+        audio_track_id: str | None = None,
+        subtitle_track_id: str | None = None,
     ) -> None:
-        """Display a single file, overwriting the current playlist."""
+        """Display a single file, overwriting the current playlist.
+
+        With ``wait`` the file follows the one on screen instead of
+        interrupting it.
+        """
         await self._request(
             "POST",
             "showFile",
@@ -273,6 +307,9 @@ class SlideshowClient:
                 "length": length,
                 "zoneId": zone_id,
                 "zoneName": zone_name,
+                "wait": wait,
+                "audioTrackId": audio_track_id,
+                "subtitleTrackId": subtitle_track_id,
             },
         )
 
@@ -366,6 +403,20 @@ class SlideshowClient:
         """Clear the screen layout override."""
         await self._request("PUT", "layout/clear")
 
+    async def async_schedule_layout(
+        self, layout_id: int | None = None, layout_name: str | None = None
+    ) -> None:
+        """Show a screen layout permanently, surviving an app restart.
+
+        Unlike ``layout/set`` this is stored as an all-day schedule at the
+        highest priority, replacing any other schedule at that priority.
+        """
+        await self._request(
+            "PUT",
+            "schedule/layout/set",
+            {"layoutId": layout_id, "layoutName": layout_name},
+        )
+
     async def async_toggle_fullscreen(self) -> None:
         """Toggle fullscreen display of the main zone."""
         await self._request("PUT", "fullscreen/toggle")
@@ -392,6 +443,35 @@ class SlideshowClient:
         await self._request("PUT", "beep")
 
     # -- Device --------------------------------------------------------------
+
+    async def async_set_screen_power(self, on: bool) -> None:
+        """Turn the screen on or off.
+
+        Only devices whose hardware SlideShow can drive -- rooted ones and
+        some signage displays -- support this; the rest answer HTTP 500.
+        """
+        await self._request("PUT", "screen/power", {"value": on})
+
+    async def async_set_screen_brightness(self, percentage: int) -> None:
+        """Set the screen brightness, with the same support as screen power."""
+        await self._request(
+            "PUT", "screen/brightness", {"value": max(0, min(100, percentage))}
+        )
+
+    async def async_send_key(self, key_code: str) -> None:
+        """Simulate a key press, such as ``66`` or ``KEYCODE_ENTER``.
+
+        The device runs ``input keyevent``, which usually needs root.
+        """
+        await self._request("PUT", "control/key", {"keyCode": key_code})
+
+    async def async_tap(self, x: int, y: int) -> None:
+        """Simulate a tap at a pixel position, which usually needs root."""
+        await self._request("PUT", "control/click", {"x": x, "y": y})
+
+    async def async_start_app(self, package_name: str) -> None:
+        """Start another Android app, such as ``com.android.chrome``."""
+        await self._request("PUT", "system/startApp", {"packageName": package_name})
 
     async def async_activate_screensaver(self) -> None:
         """Activate the screensaver layout, if one is configured."""
