@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
 from homeassistant.components import http
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.event import (
@@ -58,38 +60,73 @@ NO_URL_MESSAGE = (
     "Settings, System, Network."
 )
 
-# Sent as an SSE comment so proxies and the player's browser keep the
-# connection open during quiet periods.
+# Sent as a "ping" event during quiet periods. It keeps proxies from closing
+# the connection, and lets the page notice a stream that died without a word.
 HEARTBEAT_SECONDS = 25
+HEARTBEAT = b"event: ping\ndata: 1\n\n"
+
+# How long the page waits without a render or a heartbeat before it treats the
+# stream as dead: a few missed heartbeats, not one late one.
+STALE_MS = int(HEARTBEAT_SECONDS * 2.5 * 1000)
 
 # The page's only script. Templates are inserted with innerHTML, so the CSP
 # below pins script execution to exactly this block by its hash: markup that
 # slips through a template unescaped (an <img onerror=...> in a calendar title,
-# say) cannot run script on the Home Assistant origin.
+# say) cannot run script on the Home Assistant origin. ES5 only: players run
+# old Android WebViews.
 _SCRIPT = """
 (function () {
   var root = document.getElementById('root');
   var offline = document.getElementById('offline');
   var src = null;
+  var retry = null;
+  var watchdog = null;
+
+  function watch() {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(stale, __STALE_MS__);
+  }
+
+  // A render or a heartbeat arrived, so the stream is alive.
+  function alive() {
+    offline.hidden = true;
+    watch();
+  }
+
+  // Nothing at all for several heartbeats: Home Assistant went away without
+  // closing the connection (a power cut, say), so the browser never noticed.
+  function stale() {
+    offline.hidden = false;
+    connect();
+  }
 
   function connect() {
+    clearTimeout(retry);
+    retry = null;
     if (src) { src.close(); }
-    src = new EventSource(location.pathname.replace(/\\/$/, '') + '/events');
-    src.onmessage = function (e) {
-      offline.hidden = true;
+    var es = new EventSource(location.pathname.replace(/\\/$/, '') + '/events');
+    src = es;
+    watch();
+    es.onopen = alive;
+    es.onmessage = function (e) {
+      alive();
       try { root.innerHTML = JSON.parse(e.data); } catch (err) {}
     };
-    src.onopen = function () { offline.hidden = true; };
-    src.onerror = function () {
+    es.addEventListener('ping', alive);
+    es.onerror = function () {
+      if (es !== src) { return; }
       offline.hidden = false;
-      // EventSource retries on its own, but a player that has been asleep can
-      // end up with a dead handle, so replace it after a pause.
-      setTimeout(connect, 10000);
+      // While the browser retries on its own it is CONNECTING; leave that to
+      // it. It gives up (CLOSED) on an HTTP error, such as the 503 sent while
+      // the player is still being set up, so then try once more after a pause.
+      if (es.readyState === EventSource.CLOSED && retry === null) {
+        retry = setTimeout(connect, 10000);
+      }
     };
   }
   connect();
 })();
-"""
+""".replace("__STALE_MS__", str(STALE_MS))
 _SCRIPT_HASH = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
 PANEL_CSP = (
     f"script-src 'sha256-{_SCRIPT_HASH}'; "
@@ -113,12 +150,8 @@ class PanelRenderer:
         self._template = Template(template_str, hass)
         self._subscribers: set[asyncio.Queue[str | None]] = set()
         self._unsub: Any = None
-        self.last_html: str = ""
-
-    @property
-    def title(self) -> str:
-        """Return the page title."""
-        return self.entry.options.get(CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE)
+        # None until the first render; an empty render is still sent.
+        self.last_html: str | None = None
 
     async def async_start(self) -> None:
         """Begin tracking the template."""
@@ -137,6 +170,11 @@ class PanelRenderer:
         if self._unsub is not None:
             self._unsub.async_remove()
             self._unsub = None
+        self.async_disconnect_viewers()
+
+    @callback
+    def async_disconnect_viewers(self) -> None:
+        """End every open stream; the pages reconnect on their own."""
         for queue in list(self._subscribers):
             self._publish(queue, None)
         self._subscribers.clear()
@@ -172,7 +210,7 @@ class PanelRenderer:
         """Register a viewer and return its queue, primed with the last render."""
         queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=QUEUE_SIZE)
         self._subscribers.add(queue)
-        if self.last_html:
+        if self.last_html is not None:
             self._publish(queue, self.last_html)
         return queue
 
@@ -197,17 +235,12 @@ def is_shipped_template(template: str) -> bool:
 
 def _error_markup(message: str) -> str:
     """Return markup shown on the display when the template cannot render."""
-    safe = (
-        message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    )
-    return (
-        '<div class="ss-error"><h1>Template error</h1>'
-        f"<pre>{safe}</pre></div>"
-    )
+    safe = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<div class="ss-error"><h1>Template error</h1><pre>{safe}</pre></div>'
 
 
-def _find_renderer(hass: HomeAssistant, secret: str) -> PanelRenderer | None:
-    """Return the renderer whose entry owns this secret."""
+def _find_entry(hass: HomeAssistant, secret: str) -> ConfigEntry | None:
+    """Return the entry that owns this secret, whether it is loaded or not."""
     if not secret:
         return None
     for entry in hass.config_entries.async_entries(DOMAIN):
@@ -215,14 +248,26 @@ def _find_renderer(hass: HomeAssistant, secret: str) -> PanelRenderer | None:
         # these endpoints.
         expected = entry.data.get(CONF_PANEL_SECRET, "")
         if expected and _constant_time_equal(expected, secret):
-            coordinator = getattr(entry, "runtime_data", None)
-            return getattr(coordinator, "panel", None)
+            return entry
     return None
 
 
+def _renderer(entry: ConfigEntry) -> PanelRenderer | None:
+    """Return the entry's renderer, or None while the entry is not loaded."""
+    if entry.state is not ConfigEntryState.LOADED:
+        return None
+    return getattr(getattr(entry, "runtime_data", None), "panel", None)
+
+
 def _constant_time_equal(left: str, right: str) -> bool:
-    """Compare two secrets without leaking their contents through timing."""
-    return hmac.compare_digest(left, right)
+    """Compare two secrets without leaking their contents through timing.
+
+    Compared as bytes: compare_digest refuses a str holding anything but
+    ASCII, and the path is percent-decoded, so it can hold anything.
+    """
+    return hmac.compare_digest(
+        left.encode("utf-8", "surrogatepass"), right.encode("utf-8", "surrogatepass")
+    )
 
 
 class SlideshowPanelView(http.HomeAssistantView):
@@ -233,13 +278,18 @@ class SlideshowPanelView(http.HomeAssistantView):
     requires_auth = False
 
     async def get(self, request: web.Request, secret: str) -> web.StreamResponse:
-        """Return the page shell."""
+        """Return the page shell.
+
+        It is served even while the player's entry is not set up (the player
+        was not answering yet when Home Assistant started, say): the page then
+        keeps asking for its stream until the panel is there.
+        """
         hass = request.app[http.KEY_HASS]
-        renderer = _find_renderer(hass, secret)
-        if renderer is None:
+        entry = _find_entry(hass, secret)
+        if entry is None:
             return web.Response(status=404, text="Unknown panel")
         return web.Response(
-            text=_page(renderer.title),
+            text=_page(entry.options.get(CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE)),
             content_type="text/html",
             headers={
                 "Cache-Control": "no-store",
@@ -258,9 +308,17 @@ class SlideshowPanelEventsView(http.HomeAssistantView):
     async def get(self, request: web.Request, secret: str) -> web.StreamResponse:
         """Stream server-sent events until the viewer goes away."""
         hass = request.app[http.KEY_HASS]
-        renderer = _find_renderer(hass, secret)
-        if renderer is None:
+        entry = _find_entry(hass, secret)
+        if entry is None:
             return web.Response(status=404, text="Unknown panel")
+        renderer = _renderer(entry)
+        if renderer is None or hass.is_stopping:
+            # The page shows itself disconnected and asks again shortly.
+            return web.Response(
+                status=503,
+                text="The panel is not ready",
+                headers={"Cache-Control": "no-store", "Retry-After": "10"},
+            )
 
         response = web.StreamResponse(
             headers={
@@ -281,13 +339,13 @@ class SlideshowPanelEventsView(http.HomeAssistantView):
                         queue.get(), timeout=HEARTBEAT_SECONDS
                     )
                 except TimeoutError:
-                    await response.write(b": ping\n\n")
+                    await response.write(HEARTBEAT)
                     continue
                 if html is None:
                     break
                 payload = json.dumps(html)
                 await response.write(f"data: {payload}\n\n".encode())
-        except (ConnectionResetError, asyncio.CancelledError):
+        except ConnectionResetError:
             pass
         finally:
             renderer.async_unsubscribe(queue)
@@ -309,7 +367,7 @@ class SlideshowPanelUrlFileView(http.HomeAssistantView):
     async def get(self, request: web.Request, secret: str) -> web.StreamResponse:
         """Return a one-line file holding the panel address."""
         hass = request.app[http.KEY_HASS]
-        if _find_renderer(hass, secret) is None:
+        if _find_entry(hass, secret) is None:
             return web.Response(status=404, text="Unknown panel")
         try:
             base = panel_base_url(hass)
@@ -324,13 +382,31 @@ class SlideshowPanelUrlFileView(http.HomeAssistantView):
 
 @callback
 def async_register_views(hass: HomeAssistant) -> None:
-    """Register the panel views once for the whole integration."""
+    """Register the panel views once for the whole integration.
+
+    Called from async_setup, so the addresses answer whether or not a
+    player's entry has managed to set up yet.
+    """
     if hass.data.get(_VIEWS_REGISTERED):
         return
     hass.http.register_view(SlideshowPanelView())
     hass.http.register_view(SlideshowPanelEventsView())
     hass.http.register_view(SlideshowPanelUrlFileView())
     hass.data[_VIEWS_REGISTERED] = True
+
+    @callback
+    def _async_end_streams(event: Event) -> None:
+        """End open streams, or the web server waits for them when stopping.
+
+        Entries are not unloaded when Home Assistant stops, so nothing else
+        ends them, and every restart would sit out the server's full timeout.
+        """
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            renderer = getattr(getattr(entry, "runtime_data", None), "panel", None)
+            if renderer is not None:
+                renderer.async_disconnect_viewers()
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_end_streams)
 
 
 def panel_base_url(hass: HomeAssistant) -> str:

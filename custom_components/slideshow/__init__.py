@@ -95,6 +95,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string}),
         supports_response=SupportsResponse.ONLY,
     )
+    # Here rather than per entry, so a player's panel address answers while
+    # its entry waits to retry setup, instead of a 404 the page cannot leave.
+    async_register_views(hass)
     return True
 
 
@@ -141,7 +144,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) ->
         )
         template = None
 
-    async_register_views(hass)
     panel = PanelRenderer(hass, entry, template or DEFAULT_PANEL_TEMPLATE)
     await panel.async_start()
     entry.async_on_unload(panel.async_stop)
