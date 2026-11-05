@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import SlideshowConfigEntry, SlideshowCoordinator
@@ -55,16 +54,15 @@ class SlideshowPlaylistSelect(SlideshowEntity, SelectEntity):
         return current if current in self.coordinator.playlists else None
 
     async def async_select_option(self, option: str) -> None:
-        """Switch the main zone to the chosen playlist."""
-        playlist_id = self.coordinator.playlists.get(option)
-        if playlist_id is None:
-            # The list may be stale if the playlist was added on the device.
-            await self.coordinator.async_refresh_playlists()
-            playlist_id = self.coordinator.playlists.get(option)
-        if playlist_id is None:
-            raise HomeAssistantError(f"The player has no playlist named {option!r}")
+        """Switch the main zone to the chosen playlist.
 
-        await self.client.async_set_playlist(playlist_id=playlist_id)
+        Home Assistant only lets through an option from ``options``, so the
+        name is always known here. A playlist added on the device shows up
+        at the next playlist read, within five minutes.
+        """
+        await self.client.async_set_playlist(
+            playlist_id=self.coordinator.playlists[option]
+        )
         await self.coordinator.async_request_refresh()
 
 
@@ -94,16 +92,11 @@ class SlideshowLayoutSelect(SlideshowEntity, SelectEntity):
         return current if current in self.coordinator.layouts else None
 
     async def async_select_option(self, option: str) -> None:
-        """Switch to the chosen screen layout."""
-        layout = self.coordinator.layouts.get(option)
-        if layout is None:
-            await self.coordinator.async_refresh_layouts()
-            layout = self.coordinator.layouts.get(option)
-        if layout is None:
-            raise HomeAssistantError(
-                f"The player has no screen layout named {option!r}"
-            )
+        """Switch to the chosen screen layout.
 
+        As with playlists, Home Assistant only lets through a listed option.
+        """
+        layout = self.coordinator.layouts[option]
         if (layout_id := layout.get("id")) is not None:
             await self.client.async_set_layout(layout_id=layout_id)
         else:

@@ -12,7 +12,7 @@ from homeassistant.components.select import (
 )
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 
 from .common import mock_status_reads
 from .const import DEVICE_INFO
@@ -49,17 +49,26 @@ async def test_selecting_uses_the_playlist_id(
     assert call[1].query["playlistId"] == "34"
 
 
-async def test_unknown_playlist_is_reported(
-    hass: HomeAssistant, aioclient_mock, init_integration
+@pytest.mark.parametrize("entity_id", [ENTITY, "select.frame_screen_layout"])
+async def test_unknown_option_is_rejected(
+    hass: HomeAssistant, aioclient_mock, init_integration, entity_id: str
 ) -> None:
-    """Selecting something the player does not have fails loudly."""
-    with pytest.raises((HomeAssistantError, ValueError)):
+    """Home Assistant rejects an unlisted option before the player is asked.
+
+    So a playlist or layout added on the device can only be chosen once the
+    next read has listed it.
+    """
+    aioclient_mock.clear_requests()
+
+    with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
             SELECT_DOMAIN,
             SERVICE_SELECT_OPTION,
-            {ATTR_ENTITY_ID: ENTITY, ATTR_OPTION: "Does not exist"},
+            {ATTR_ENTITY_ID: entity_id, ATTR_OPTION: "Does not exist"},
             blocking=True,
         )
+
+    assert aioclient_mock.call_count == 0
 
 
 async def test_unlisted_playlist_reads_as_unknown(

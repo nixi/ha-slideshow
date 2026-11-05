@@ -188,8 +188,12 @@ async def test_device_follows_an_app_update(
         f"{BASE}/ajax/deviceInfo",
         json={**DEVICE_INFO, "softwareVersion": "4.13.0", "deviceName": "Hallway"},
     )
+    mock_status_reads(aioclient_mock)
     await init_integration.runtime_data.async_refresh()
 
+    # The update has to arrive through a poll that succeeds, not one that
+    # fails after the device page was already touched.
+    assert init_integration.runtime_data.last_update_success
     assert device().sw_version == "4.13.0"
     assert device().name == "Hallway"
 
