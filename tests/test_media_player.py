@@ -125,6 +125,55 @@ async def test_video_takes_the_main_zone(hass: HomeAssistant, aioclient_mock) ->
     assert "zoneId" not in call[1].query
 
 
+@pytest.mark.parametrize(
+    ("content_type", "endpoint", "zone"),
+    [
+        (MediaType.IMAGE, "showSentHtml", None),
+        ("image/jpeg", "showSentHtml", None),
+        (MediaType.MUSIC, "showStream", "audio"),
+        ("audio/mpeg", "showStream", "audio"),
+        ("video/mp4", "showStream", None),
+    ],
+)
+async def test_mime_types_are_routed_like_media_classes(
+    hass: HomeAssistant,
+    aioclient_mock,
+    content_type: str,
+    endpoint: str,
+    zone: str | None,
+) -> None:
+    """A MIME type as the content type is routed like its media class.
+
+    Images get the HTML wrapper rather than the video player, and audio goes
+    to the audio zone rather than taking over the screen.
+    """
+    await _setup(hass, aioclient_mock)
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(re.compile(r"/ajax/showStream"), json={"success": True})
+    aioclient_mock.post(re.compile(r"/ajax/showSentHtml"), json={"success": True})
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
+
+    await hass.services.async_call(
+        MP_DOMAIN,
+        SERVICE_PLAY_MEDIA,
+        {
+            ATTR_ENTITY_ID: ENTITY,
+            ATTR_MEDIA_CONTENT_TYPE: content_type,
+            ATTR_MEDIA_CONTENT_ID: "http://nas.local/media/item",
+        },
+        blocking=True,
+    )
+
+    (call,) = [
+        c
+        for c in aioclient_mock.mock_calls
+        if re.search(r"/ajax/show(Stream|SentHtml)", str(c[1]))
+    ]
+    assert endpoint in str(call[1])
+    assert call[1].query.get("zoneId") == zone
+
+
 async def test_zones_are_listed(hass: HomeAssistant, aioclient_mock) -> None:
     """Every zone, the audio zone included, shows what it is playing."""
     await _setup(hass, aioclient_mock)

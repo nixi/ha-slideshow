@@ -1,10 +1,14 @@
 """Tests for the integration's own actions."""
 
+import base64
 import re
+from datetime import timedelta
+from http import HTTPStatus
 from unittest.mock import patch
 
 import pytest
 import voluptuous as vol
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import (
@@ -13,11 +17,12 @@ from homeassistant.exceptions import (
     Unauthorized,
 )
 from homeassistant.helpers.network import NoURLAvailableError
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.slideshow.const import DOMAIN
 
 from .common import mock_status_reads
-from .const import DEVICE_INFO
+from .const import CONTENT, DEVICE_INFO
 
 ENTITY = "media_player.frame"
 
@@ -94,6 +99,99 @@ async def test_show_camera_prefers_rtsp(
     call = next(c for c in aioclient_mock.mock_calls if "showStream" in str(c[1]))
     assert call[1].query["address"] == "rtsp://camera.local/stream"
     assert call[1].query["duration"] == "45"
+
+
+async def test_show_camera_defaults_to_a_minute(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A camera is a pop-up, so without a duration it stays for 60 seconds."""
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(re.compile(r"/ajax/showStream"), json={"success": True})
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, None)
+
+    with patch(
+        "custom_components.slideshow.media_player.async_get_stream_source",
+        return_value="rtsp://camera.local/stream",
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            "show_camera",
+            {ATTR_ENTITY_ID: ENTITY, "camera_entity_id": "camera.front_door"},
+            blocking=True,
+        )
+
+    call = next(c for c in aioclient_mock.mock_calls if "showStream" in str(c[1]))
+    assert call[1].query["duration"] == "60"
+
+
+async def test_show_camera_still_outlasts_the_camera_token(
+    hass: HomeAssistant,
+    aioclient_mock,
+    init_integration,
+    hass_client_no_auth,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A camera without a stream is shown as a signed, reloading still.
+
+    Home Assistant replaces a camera's access token every five minutes and
+    keeps only the last two, so an address carrying one stops working within
+    ten. The signed address, reloads included, has to keep working for the
+    whole duration.
+    """
+    hass.config.internal_url = "http://10.0.0.5:8123"
+    camera = "camera.frame_screenshot"  # The player's own; it has no stream.
+    first_token = hass.states.get(camera).attributes["access_token"]
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(re.compile(r"/ajax/showSentHtml"), json={"success": True})
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
+    aioclient_mock.get(
+        re.compile(r"/ajax/screenshot"),
+        json={"success": True, "result": {"data": base64.b64encode(b"jpeg").decode()}},
+    )
+    aioclient_mock.get(
+        re.compile(r"/ajax/content/get"),
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+    mock_status_reads(aioclient_mock, None)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "show_camera",
+        {ATTR_ENTITY_ID: ENTITY, "camera_entity_id": camera, "duration": 1800},
+        blocking=True,
+    )
+
+    call = next(c for c in aioclient_mock.mock_calls if "showSentHtml" in str(c[1]))
+    html = call[1].query["html"]
+    assert call[1].query["length"] == "1800"
+    url = re.search(r'src="([^"]+)"', html).group(1)
+    assert url.startswith(
+        "http://10.0.0.5:8123/api/camera_proxy/camera.frame_screenshot?"
+    )
+    assert "token=" not in url
+    # The page reloads the image with the time in a second authSig.
+    assert f"'{url}&authSig='+Date.now()" in html
+
+    for _ in range(2):
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+    assert hass.states.get(camera).attributes["access_token"] != first_token
+
+    client = await hass_client_no_auth()
+    path = url.removeprefix("http://10.0.0.5:8123")
+    expired = await client.get(f"/api/camera_proxy/{camera}?token={first_token}")
+    assert expired.status == HTTPStatus.FORBIDDEN
+    assert (await client.get(path)).status == HTTPStatus.OK
+    assert (await client.get(f"{path}&authSig=1789741074105")).status == HTTPStatus.OK
+    # Anything else added to the address still breaks the signature.
+    assert (await client.get(f"{path}&t=1")).status == HTTPStatus.FORBIDDEN
+
+    # And it lapses once the camera is no longer meant to be on screen.
+    freezer.tick(timedelta(minutes=30))
+    assert (await client.get(path)).status == HTTPStatus.FORBIDDEN
 
 
 async def test_install_panel_pulls_the_url_file_and_creates_content(

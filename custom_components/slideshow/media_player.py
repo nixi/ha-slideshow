@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
+from urllib.parse import quote
 
 import voluptuous as vol
 from homeassistant.components import media_source
 from homeassistant.components.camera import async_get_stream_source
+from homeassistant.components.http.auth import SIGN_QUERY_PARAM, async_sign_path
 from homeassistant.components.media_player import (
     BrowseMedia,
     MediaPlayerDeviceClass,
@@ -79,6 +82,14 @@ from .entity import SlideshowEntity
 from .panel import NO_URL_MESSAGE, panel_base_url, panel_url_file_path
 
 _LOGGER = logging.getLogger(__name__)
+
+# A camera is a pop-up, such as a doorbell, so it should not hold the screen
+# for long unless asked to.
+DEFAULT_CAMERA_DURATION = 60
+
+# How much longer than the requested duration a signed camera still address
+# stays valid, so a slow start or a late last reload is still let in.
+CAMERA_SIGNATURE_MARGIN = timedelta(minutes=5)
 
 ZONE_SCHEMA = {
     vol.Optional(ATTR_ZONE_ID): cv.string,
@@ -184,7 +195,7 @@ async def async_setup_entry(
         SERVICE_SHOW_CAMERA,
         {
             vol.Required(ATTR_CAMERA_ENTITY_ID): cv.entity_id,
-            vol.Optional(ATTR_DURATION, default=DEFAULT_MEDIA_DURATION): vol.All(
+            vol.Optional(ATTR_DURATION, default=DEFAULT_CAMERA_DURATION): vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
             **ZONE_SCHEMA,
@@ -443,12 +454,15 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         duration = int(kwargs.get("extra", {}).get("duration", DEFAULT_MEDIA_DURATION))
         zone_id = kwargs.get("extra", {}).get("zone_id")
 
-        is_audio = (mime_type or "").startswith("audio/") or media_type in (
-            MediaType.MUSIC,
-            "audio",
+        # Callers pass either a media class ("image", "music") or a MIME type
+        # ("image/jpeg", "audio/mpeg") as the content type, so both count.
+        kinds = (mime_type or "", str(media_type))
+        is_image = any(
+            kind == MediaType.IMAGE or kind.startswith("image/") for kind in kinds
         )
-        is_image = (mime_type or "").startswith("image/") or (
-            media_type == MediaType.IMAGE
+        is_audio = any(
+            kind in (MediaType.MUSIC, "audio") or kind.startswith("audio/")
+            for kind in kinds
         )
 
         if is_image:
@@ -474,7 +488,7 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         directly, and falls back to Home Assistant's still image.
         """
         camera_entity_id = kwargs[ATTR_CAMERA_ENTITY_ID]
-        duration = kwargs.get(ATTR_DURATION, DEFAULT_MEDIA_DURATION)
+        duration = kwargs.get(ATTR_DURATION, DEFAULT_CAMERA_DURATION)
         zone_id = kwargs.get(ATTR_ZONE_ID)
         zone_name = kwargs.get(ATTR_ZONE_NAME)
 
@@ -493,10 +507,20 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
             # No stream: fall back to the camera's still image, refreshed by
             # the page itself so it does not freeze on a single frame.
             state = self.hass.states.get(camera_entity_id)
-            if state is None or not (path := state.attributes.get("entity_picture")):
+            if state is None or not state.attributes.get("entity_picture"):
                 raise HomeAssistantError(
                     f"{camera_entity_id} offers neither a stream nor a still image"
                 )
+            # The entity picture carries a camera token that Home Assistant
+            # replaces every five minutes, so the address is signed instead,
+            # for as long as the camera is meant to be shown. The read-only
+            # content user signs it, so it does not depend on who called.
+            path = async_sign_path(
+                self.hass,
+                f"/api/camera_proxy/{quote(camera_entity_id)}",
+                timedelta(seconds=duration) + CAMERA_SIGNATURE_MARGIN,
+                use_content_user=True,
+            )
             await self.client.async_show_html(
                 _refreshing_image_html(async_process_play_media_url(self.hass, path)),
                 duration,
@@ -654,12 +678,18 @@ def _fullscreen_image_html(url: str) -> str:
 
 
 def _refreshing_image_html(url: str) -> str:
-    """Return HTML that reloads a still image once a second."""
-    separator = "&" if "?" in url else "?"
+    """Return HTML that reloads a signed still image once a second.
+
+    The browser reuses an image whose address it has seen, so each reload
+    needs an address of its own. Any parameter added to a signed address
+    breaks the signature, except a repeated ``authSig``: Home Assistant
+    checks the first one and leaves every ``authSig`` out of the signed
+    parameters. So the time goes into a second one.
+    """
     return (
         '<div style="position:absolute;inset:0;background:#000">'
         f'<img id="c" src="{url}" '
         'style="width:100%;height:100%;object-fit:contain">'
         "<script>setInterval(function(){document.getElementById('c').src="
-        f"'{url}{separator}t='+Date.now();}}, 1000);</script></div>"
+        f"'{url}&{SIGN_QUERY_PARAM}='+Date.now();}}, 1000);</script></div>"
     )
