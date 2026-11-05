@@ -1,16 +1,18 @@
 """Tests for the SlideShow config flow."""
 
+import re
 from unittest.mock import patch
 
 import pytest
-from homeassistant.config_entries import SOURCE_USER
+from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from custom_components import slideshow
 from custom_components.slideshow.api import SlideshowAuthError
 from custom_components.slideshow.const import DEFAULT_PANEL_TEMPLATE, DOMAIN
 
-from .const import BASE, DEVICE_INFO, USER_INPUT
+from .const import BASE, DEVICE_INFO, HOST, USER_INPUT
 
 
 async def test_user_flow_creates_entry(hass: HomeAssistant, aioclient_mock) -> None:
@@ -37,10 +39,19 @@ async def test_user_flow_creates_entry(hass: HomeAssistant, aioclient_mock) -> N
         ({"status": 303, "headers": {"Location": "/login"}}, "invalid_auth"),
         ({"status": 401}, "invalid_auth"),
         ({"exc": TimeoutError()}, "cannot_connect"),
+        # Something other than SlideShow answers at the address.
+        ({"status": 404}, "cannot_connect"),
+        ({"text": "<html>Router login</html>"}, "cannot_connect"),
+        ({"content": b"\xff\xfe\x00"}, "cannot_connect"),
+        ({"json": ["not", "an", "object"]}, "cannot_connect"),
     ],
 )
 async def test_user_flow_errors(
-    hass: HomeAssistant, aioclient_mock, mock_kwargs: dict, expected: str
+    hass: HomeAssistant,
+    aioclient_mock,
+    caplog: pytest.LogCaptureFixture,
+    mock_kwargs: dict,
+    expected: str,
 ) -> None:
     """Failures are reported on the form rather than raising."""
     aioclient_mock.get(f"{BASE}/ajax/deviceInfo", **mock_kwargs)
@@ -53,6 +64,8 @@ async def test_user_flow_errors(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": expected}
+    # A wrong address is the user's to fix, not an unexpected error.
+    assert "Traceback" not in caplog.text
 
 
 async def test_duplicate_player_is_rejected(
@@ -152,3 +165,118 @@ async def test_options_flow_does_not_store_the_default_template(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert "panel_template" not in init_integration.options
     assert init_integration.options["scan_interval"] == 60
+
+
+async def test_reconfigure_to_a_non_slideshow_address(
+    hass: HomeAssistant,
+    aioclient_mock,
+    caplog: pytest.LogCaptureFixture,
+    mock_config_entry,
+) -> None:
+    """A host answering 404 is a wrong address, not an unexpected error."""
+    mock_config_entry.add_to_hass(hass)
+    aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), status=404)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"host": "192.0.2.99", "port": 80, "ssl": False, "verify_ssl": False},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert "Traceback" not in caplog.text
+
+
+async def test_reauth_against_a_non_slideshow_answer(
+    hass: HomeAssistant,
+    aioclient_mock,
+    caplog: pytest.LogCaptureFixture,
+    mock_config_entry,
+) -> None:
+    """A page that is not JSON is reported as an address problem."""
+    mock_config_entry.add_to_hass(hass)
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", text="<html>Not here</html>")
+
+    result = await mock_config_entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_confirm"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"username": "admin", "password": "admin"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert "Traceback" not in caplog.text
+
+
+async def test_options_flow_rejects_a_broken_template(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A template that does not compile is flagged on the form, not saved.
+
+    Saved, it would replace the panel on every player with an error.
+    """
+    broken = "{% for x in [1, 2] %}{{ x }}"
+    result = await hass.config_entries.options.async_init(init_integration.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            "scan_interval": 60,
+            "screen_off_layout": "Screen off",
+            "panel_title": "Hall",
+            "panel_template": broken,
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"panel_template": "invalid_template"}
+    assert "panel_template" not in init_integration.options
+    # What was typed is kept on the form, to be corrected.
+    fields = {str(key): key for key in result["data_schema"].schema}
+    assert fields["panel_template"].default() == broken
+    assert fields["panel_title"].default() == "Hall"
+
+
+async def test_saving_options_reloads_once(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Changed options take effect at once, with a single reload."""
+    with patch(
+        "custom_components.slideshow.async_setup_entry",
+        wraps=slideshow.async_setup_entry,
+    ) as setup:
+        result = await hass.config_entries.options.async_init(init_integration.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "scan_interval": 45,
+                "screen_off_layout": "Screen off",
+                "panel_title": "Hall",
+                "panel_template": "<b>hi</b>",
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert setup.call_count == 1
+    assert init_integration.state is ConfigEntryState.LOADED
+    assert init_integration.runtime_data.update_interval.total_seconds() == 45
+
+
+async def test_reconfigure_reloads_once(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """A changed setting is picked up by one reload, not two."""
+    with patch(
+        "custom_components.slideshow.async_setup_entry",
+        wraps=slideshow.async_setup_entry,
+    ) as setup:
+        result = await init_integration.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": HOST, "port": 8080, "ssl": False, "verify_ssl": True},
+        )
+        await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert setup.call_count == 1

@@ -372,7 +372,7 @@ python scripts/make_samples.py samples --width 1920 --height 1080
 
 ## Requirements
 
-- Home Assistant 2025.3 or newer (developed and tested against 2026.9)
+- Home Assistant 2025.8 or newer (developed and tested against 2026.9)
 - SlideShow 4.11 or newer, with the web interface reachable from Home Assistant. A few
   things need a newer app, and are left out on an older one: the screen layout select
   needs 4.13.0, and `start_app` needs 4.12.8.

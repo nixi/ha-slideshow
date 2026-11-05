@@ -2,12 +2,13 @@
 
 import re
 
+from aiohttp import ClientConnectionError
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
 
-from .const import DEVICE_INFO
+from .const import DEVICE_INFO, HOST, PORT
 
 
 async def test_identifiers_are_redacted(
@@ -30,3 +31,20 @@ async def test_identifiers_are_redacted(
     assert result["device_info"]["serialNumber"] != DEVICE_INFO["serialNumber"]
     # Non-identifying fields stay, or the report is useless.
     assert result["device_info"]["softwareVersion"] == DEVICE_INFO["softwareVersion"]
+
+
+async def test_errors_do_not_reveal_the_address(
+    hass: HomeAssistant, hass_client, aioclient_mock, init_integration
+) -> None:
+    """A player that is offline while diagnostics are taken stays anonymous."""
+    aioclient_mock.get(re.compile(r"/ajax/zones"), exc=TimeoutError())
+    aioclient_mock.get(
+        re.compile(r"/ajax/displayInfo"),
+        exc=ClientConnectionError(f"Cannot connect to host {HOST}:{PORT}"),
+    )
+
+    result = await get_diagnostics_for_config_entry(hass, hass_client, init_integration)
+
+    assert "error" in result["zones"]
+    assert "error" in result["displays"]
+    assert HOST not in str(result)

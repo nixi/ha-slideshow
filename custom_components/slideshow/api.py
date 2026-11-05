@@ -21,6 +21,9 @@ from http import HTTPStatus
 from typing import Any
 
 import aiohttp
+from homeassistant.exceptions import HomeAssistantError
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,16 +34,45 @@ SCREENSHOT_TIMEOUT = aiohttp.ClientTimeout(total=45)
 LOGIN_PATH = "/login"
 
 
-class SlideshowError(Exception):
-    """Base error for all SlideShow API failures."""
+class SlideshowError(HomeAssistantError):
+    """Base error for all SlideShow API failures.
+
+    It is a Home Assistant error, so a failed action is reported as one in the
+    UI, and a script with ``continue_on_error`` carries on, instead of the
+    failure being logged as an unexpected exception. The English message is
+    for the log and may name the player's address; the UI shows the
+    translated message, which never does.
+    """
+
+    _translation_key = "api_error"
+    #: Whether the message goes into the translation as ``reason``. Off for
+    #: errors whose message names the player's address.
+    _reason_in_translation = True
+
+    def __init__(self, message: str) -> None:
+        """Initialise the error with a message for the log."""
+        super().__init__(
+            message,
+            translation_domain=DOMAIN,
+            translation_key=self._translation_key,
+            translation_placeholders=(
+                {"reason": message} if self._reason_in_translation else None
+            ),
+        )
 
 
 class SlideshowConnectionError(SlideshowError):
     """The device could not be reached."""
 
+    _translation_key = "cannot_connect"
+    _reason_in_translation = False
+
 
 class SlideshowAuthError(SlideshowError):
     """The supplied credentials were rejected."""
+
+    _translation_key = "invalid_auth"
+    _reason_in_translation = False
 
 
 class SlideshowApiError(SlideshowError):
@@ -49,6 +81,18 @@ class SlideshowApiError(SlideshowError):
 
 class SlideshowNotSupportedError(SlideshowApiError):
     """The player has no such endpoint, usually because its app is older."""
+
+    _translation_key = "not_supported"
+
+
+class SlideshowInvalidResponseError(SlideshowApiError):
+    """The answer was not the JSON a SlideShow player sends.
+
+    Usually something else is listening at the address, such as a router's
+    admin page.
+    """
+
+    _translation_key = "invalid_response"
 
 
 def _clean_params(params: dict[str, Any] | None) -> dict[str, str]:
@@ -151,7 +195,13 @@ class SlideshowClient:
                     raise SlideshowApiError(
                         f"{method} {path} failed: HTTP {response.status}: {body}"
                     )
-                payload = await response.json(content_type=None)
+                try:
+                    payload = await response.json(content_type=None)
+                except ValueError as err:
+                    # Not JSON, or not even text.
+                    raise SlideshowInvalidResponseError(
+                        f"{method} {path} did not return JSON"
+                    ) from err
         except TimeoutError as err:
             raise SlideshowConnectionError(
                 f"Timeout talking to SlideShow at {self._host}"
@@ -162,7 +212,9 @@ class SlideshowClient:
             ) from err
 
         if not isinstance(payload, dict):
-            raise SlideshowApiError(f"{path} returned an unexpected payload type")
+            raise SlideshowInvalidResponseError(
+                f"{path} returned an unexpected payload type"
+            )
 
         # deviceInfo answers with a bare object; everything else is wrapped.
         if "success" in payload:
@@ -207,7 +259,12 @@ class SlideshowClient:
     async def async_get_seconds_since_user_activity(self) -> int:
         """Return how long ago the screen was last touched or a key pressed."""
         result = await self._request("GET", "lastUserActivity")
-        return int(result["secondsSinceLastActivity"])
+        try:
+            return int(result["secondsSinceLastActivity"])
+        except (KeyError, TypeError, ValueError, OverflowError) as err:
+            raise SlideshowInvalidResponseError(
+                "lastUserActivity did not report secondsSinceLastActivity"
+            ) from err
 
     async def async_get_volume(self) -> int:
         """Return the current volume as a percentage."""

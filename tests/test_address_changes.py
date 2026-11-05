@@ -95,6 +95,33 @@ async def test_dhcp_leaves_a_working_player_alone(
     assert init_integration.data["host"] != NEW_HOST
 
 
+async def test_dhcp_follows_a_player_whose_old_address_was_taken(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Another player answering at the old address is no reason to stay.
+
+    After a router restart two players can trade addresses. The old address
+    still answers, but as the other player, so this one has to move.
+    """
+    from .const import BASE
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(
+        f"{BASE}/ajax/deviceInfo", json={**DEVICE_INFO, "deviceId": "someone-else"}
+    )
+    aioclient_mock.get(f"{NEW_BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock, NEW_BASE)
+    aioclient_mock.get(
+        f"{NEW_BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+
+    await _dhcp(hass)
+    await hass.async_block_till_done()
+
+    assert init_integration.data["host"] == NEW_HOST
+
+
 async def test_dhcp_ignores_unknown_devices(
     hass: HomeAssistant, init_integration
 ) -> None:

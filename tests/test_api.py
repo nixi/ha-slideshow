@@ -8,6 +8,7 @@ import re
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.slideshow.api import (
@@ -15,6 +16,8 @@ from custom_components.slideshow.api import (
     SlideshowAuthError,
     SlideshowClient,
     SlideshowConnectionError,
+    SlideshowError,
+    SlideshowInvalidResponseError,
     SlideshowNotSupportedError,
 )
 
@@ -22,9 +25,7 @@ from .const import BASE, DEVICE_INFO, HOST, PORT
 
 
 def _client(hass: HomeAssistant) -> SlideshowClient:
-    return SlideshowClient(
-        async_get_clientsession(hass), HOST, PORT, "admin", "admin"
-    )
+    return SlideshowClient(async_get_clientsession(hass), HOST, PORT, "admin", "admin")
 
 
 async def test_device_info_is_a_bare_object(
@@ -129,9 +130,7 @@ async def test_unset_parameters_are_dropped(
     assert dict(aioclient_mock.mock_calls[0][1].query) == {}
 
 
-async def test_booleans_are_lowercased(
-    hass: HomeAssistant, aioclient_mock
-) -> None:
+async def test_booleans_are_lowercased(hass: HomeAssistant, aioclient_mock) -> None:
     """Python's True would be sent as 'True' without conversion."""
     aioclient_mock.post(re.compile(r"/ajax/synchronize"), json={"success": True})
     await _client(hass).async_synchronize(
@@ -140,9 +139,7 @@ async def test_booleans_are_lowercased(
     assert aioclient_mock.mock_calls[0][1].query["clearFolder"] == "true"
 
 
-async def test_screenshot_is_decoded(
-    hass: HomeAssistant, aioclient_mock
-) -> None:
+async def test_screenshot_is_decoded(hass: HomeAssistant, aioclient_mock) -> None:
     """The screenshot arrives base64 encoded inside JSON."""
     aioclient_mock.get(
         f"{BASE}/ajax/screenshot",
@@ -175,3 +172,51 @@ async def test_missing_endpoint_is_not_supported(
     )
     with pytest.raises(SlideshowNotSupportedError):
         await _client(hass).async_get_layouts()
+
+
+@pytest.mark.parametrize(
+    "mock_kwargs",
+    [
+        {"text": "<html>Router login</html>"},
+        {"content": b"\xff\xfe\x00"},
+        {"json": ["not", "an", "object"]},
+    ],
+)
+async def test_answer_that_is_not_json_is_an_api_error(
+    hass: HomeAssistant, aioclient_mock, mock_kwargs: dict
+) -> None:
+    """Another web server at the address must not crash the caller."""
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", **mock_kwargs)
+    with pytest.raises(SlideshowInvalidResponseError):
+        await _client(hass).async_get_device_info()
+
+
+@pytest.mark.parametrize(
+    "result",
+    [{}, {"secondsSinceLastActivity": None}, {"secondsSinceLastActivity": "soon"}],
+)
+async def test_activity_without_a_value_is_an_api_error(
+    hass: HomeAssistant, aioclient_mock, result: dict
+) -> None:
+    """A missing activity count is reported as the device's fault."""
+    aioclient_mock.get(
+        f"{BASE}/ajax/lastUserActivity", json={"success": True, "result": result}
+    )
+    with pytest.raises(SlideshowApiError):
+        await _client(hass).async_get_seconds_since_user_activity()
+
+
+async def test_errors_are_home_assistant_errors(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Errors reach the UI translated, and without the player's address."""
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", exc=TimeoutError())
+    with pytest.raises(HomeAssistantError) as err:
+        await _client(hass).async_get_device_info()
+
+    assert isinstance(err.value, SlideshowError)
+    assert err.value.translation_domain == "slideshow"
+    assert err.value.translation_key == "cannot_connect"
+    assert not err.value.translation_placeholders
+    # The log keeps the address, to tell several players apart.
+    assert HOST in str(err.value)

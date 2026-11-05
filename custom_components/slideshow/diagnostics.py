@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
@@ -30,15 +30,20 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for a config entry."""
     coordinator = entry.runtime_data
 
+    def error(err: SlideshowError) -> dict[str, str]:
+        # Connection errors name the player's address, which is redacted
+        # everywhere else in the report.
+        return {"error": str(err).replace(entry.data[CONF_HOST], REDACTED)}
+
     try:
         zones: Any = await coordinator.client.async_get_zones()
     except SlideshowError as err:
-        zones = {"error": str(err)}
+        zones = error(err)
 
     try:
         displays: Any = await coordinator.client.async_get_display_info()
     except SlideshowError as err:
-        displays = {"error": str(err)}
+        displays = error(err)
 
     return {
         "entry": {

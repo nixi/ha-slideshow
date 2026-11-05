@@ -127,8 +127,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) ->
         )
 
     # A stored copy of a shipped default is dropped, so this entry follows the
-    # current default and its fixes. The update listener is not attached yet,
-    # so this does not trigger a reload.
+    # current default and its fixes. Only the options flow reloads the entry
+    # when its options change, so this does not trigger a reload.
     template = entry.options.get(CONF_PANEL_TEMPLATE)
     if template is not None and is_shipped_template(template):
         hass.config_entries.async_update_entry(
@@ -149,15 +149,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) ->
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) -> None:
-    """Reload the entry when its options change."""
-    await hass.config_entries.async_reload(entry.entry_id)

@@ -66,6 +66,9 @@
         },
         "description": "The live panel is a page Home Assistant serves for this player. Run the Install panel action to add it to the player as a playlist of its own."
       }
+    },
+    "error": {
+      "invalid_template": "The template has a syntax error. Check it for an unclosed tag or a misspelled filter."
     }
   },
   "entity": {
@@ -461,6 +464,26 @@
           "description": "Package name of the app, for example com.android.chrome."
         }
       }
+    }
+  },
+  "exceptions": {
+    "api_error": {
+      "message": "The SlideShow player reported an error: {reason}"
+    },
+    "cannot_connect": {
+      "message": "Could not reach the SlideShow player. Check that it is on and that the SlideShow app is running."
+    },
+    "invalid_auth": {
+      "message": "The SlideShow player rejected the username or password."
+    },
+    "not_supported": {
+      "message": "The SlideShow player does not offer this, probably because its app is older: {reason}"
+    },
+    "invalid_response": {
+      "message": "The SlideShow player sent an answer that could not be read: {reason}"
+    },
+    "wrong_device": {
+      "message": "The address set for {title} now belongs to a different SlideShow player. If the player has moved, reconfigure the entry with its new address."
     }
   }
 }

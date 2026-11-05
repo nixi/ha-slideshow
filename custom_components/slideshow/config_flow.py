@@ -7,7 +7,12 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -16,6 +21,7 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import callback
+from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
@@ -27,12 +33,15 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
+from homeassistant.helpers.template import Template
 
 from .api import (
     SlideshowAuthError,
     SlideshowClient,
     SlideshowConnectionError,
     SlideshowError,
+    SlideshowInvalidResponseError,
+    SlideshowNotSupportedError,
 )
 from .const import (
     CONF_PANEL_TEMPLATE,
@@ -55,6 +64,15 @@ from .coordinator import SlideshowConfigEntry
 from .panel import is_shipped_template
 
 _LOGGER = logging.getLogger(__name__)
+
+#: Errors meaning no SlideShow player answers at the address: nothing does,
+#: or something else does -- a router's admin page, a NAS, a mistyped IP.
+#: Either way the address is the user's to fix, not a fault worth a traceback.
+CANNOT_CONNECT_ERRORS = (
+    SlideshowConnectionError,
+    SlideshowInvalidResponseError,
+    SlideshowNotSupportedError,
+)
 
 STEP_USER_SCHEMA = vol.Schema(
     {
@@ -98,7 +116,7 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
                 info = await _async_validate(self.hass, user_input)
             except SlideshowAuthError:
                 errors["base"] = "invalid_auth"
-            except SlideshowConnectionError:
+            except CANNOT_CONNECT_ERRORS:
                 errors["base"] = "cannot_connect"
             except SlideshowError:
                 _LOGGER.exception("Unexpected error talking to SlideShow")
@@ -144,21 +162,20 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
 
         # A player that is still answering at its configured address does not
-        # need moving, whatever the DHCP server now says.
+        # need moving, whatever the DHCP server now says. Another player
+        # answering there does not count: the leases may have been swapped.
         try:
-            await _async_validate(self.hass, entry.data)
+            old_info = await _async_validate(self.hass, entry.data)
         except SlideshowError:
-            pass
-        else:
+            old_info = None
+        if old_info is not None and old_info.get("deviceId") == entry.unique_id:
             return self.async_abort(reason="already_configured")
 
         # Check the new address really is this player before moving to it. If
         # nothing answers there yet -- the app may still be starting -- the MAC
         # match from the device registry is trusted instead.
         try:
-            info = await _async_validate(
-                self.hass, {**entry.data, CONF_HOST: new_host}
-            )
+            info = await _async_validate(self.hass, {**entry.data, CONF_HOST: new_host})
         except SlideshowError:
             info = None
         if info is not None and info.get("deviceId") != entry.unique_id:
@@ -206,7 +223,7 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
                 info = await _async_validate(self.hass, data)
             except SlideshowAuthError:
                 errors["base"] = "invalid_auth"
-            except SlideshowConnectionError:
+            except CANNOT_CONNECT_ERRORS:
                 errors["base"] = "cannot_connect"
             except SlideshowError:
                 _LOGGER.exception("Unexpected error talking to SlideShow")
@@ -266,7 +283,7 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
                 await _async_validate(self.hass, data)
             except SlideshowAuthError:
                 errors["base"] = "invalid_auth"
-            except SlideshowConnectionError:
+            except CANNOT_CONNECT_ERRORS:
                 errors["base"] = "cannot_connect"
             except SlideshowError:
                 _LOGGER.exception("Unexpected error talking to SlideShow")
@@ -292,30 +309,45 @@ class SlideshowConfigFlow(ConfigFlow, domain=DOMAIN):
         return SlideshowOptionsFlow()
 
 
-class SlideshowOptionsFlow(OptionsFlow):
-    """Let the user tune the polling interval."""
+class SlideshowOptionsFlow(OptionsFlowWithReload):
+    """Let the user tune the polling interval and the panel.
+
+    Saving changed options reloads the entry, so they take effect at once.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            # The form is pre-filled with the default template. Storing that
-            # copy would pin this entry to it and hide later fixes.
-            if is_shipped_template(user_input.get(CONF_PANEL_TEMPLATE, "")):
-                user_input = {
-                    key: value
-                    for key, value in user_input.items()
-                    if key != CONF_PANEL_TEMPLATE
-                }
-            return self.async_create_entry(data=user_input)
+            template = user_input.get(CONF_PANEL_TEMPLATE, "")
+            try:
+                # Caught here, the mistake is shown on the form rather than
+                # in place of the panel on every player.
+                Template(template, self.hass).ensure_valid()
+            except TemplateError as err:
+                _LOGGER.debug("The panel template does not compile: %s", err)
+                errors[CONF_PANEL_TEMPLATE] = "invalid_template"
+            else:
+                # The form is pre-filled with the default template. Storing
+                # that copy would pin this entry to it and hide later fixes.
+                if is_shipped_template(template):
+                    user_input = {
+                        key: value
+                        for key, value in user_input.items()
+                        if key != CONF_PANEL_TEMPLATE
+                    }
+                return self.async_create_entry(data=user_input)
 
-        options = self.config_entry.options
+        # After an error the form keeps what was entered, to be corrected.
+        options = {**self.config_entry.options, **(user_input or {})}
         interval = options.get(
             CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds())
         )
         return self.async_show_form(
             step_id="init",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_SCAN_INTERVAL, default=interval): NumberSelector(
@@ -343,9 +375,7 @@ class SlideshowOptionsFlow(OptionsFlow):
                             CONF_PANEL_TEMPLATE, DEFAULT_PANEL_TEMPLATE
                         ),
                     ): TextSelector(
-                        TextSelectorConfig(
-                            type=TextSelectorType.TEXT, multiline=True
-                        )
+                        TextSelectorConfig(type=TextSelectorType.TEXT, multiline=True)
                     ),
                 }
             ),

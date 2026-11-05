@@ -94,6 +94,13 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             data = await self.client.async_get_device_info()
         except SlideshowAuthError as err:
+            # During setup there is no grace: every retry builds a new
+            # coordinator, so the clock below would never run out and the
+            # user would never be asked. The reauth flow checks the stored
+            # credentials again first, so a passing rejection still asks
+            # nobody anything.
+            if self.data is None:
+                raise ConfigEntryAuthFailed(str(err)) from err
             # A player can reject perfectly good credentials for a moment --
             # while it is starting up, or being reconfigured. Asking the user
             # to retype a password that never changed is worse than waiting,
@@ -117,6 +124,17 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(str(err)) from err
 
         self._auth_rejected_since = None
+        # The address may now belong to another player, after a router
+        # restart reshuffled the leases. Controlling that player, and renaming
+        # this device after it, would be worse than going unavailable.
+        device_id = data.get("deviceId")
+        expected = self.config_entry.unique_id
+        if device_id and expected and device_id != expected:
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="wrong_device",
+                translation_placeholders={"title": self.config_entry.title},
+            )
         await self._async_resolve_time_zone(data.get("timeZone"))
         self._async_update_device(data)
 
@@ -139,7 +157,11 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "lastUserActivity", self.client.async_get_seconds_since_user_activity
         )
         if seconds is not None:
-            self._async_set_last_user_activity(now - timedelta(seconds=seconds))
+            # Counted back from when the answer came, not from the start of
+            # the poll: the reads before it can take a while.
+            self._async_set_last_user_activity(
+                dt_util.utcnow() - timedelta(seconds=seconds)
+            )
 
         return data
 
@@ -281,9 +303,7 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         answers with an error, and the screen is switched with the layout
         SlideShow shows while a schedule has the display powered down.
         """
-        if on and (
-            self._screen_power_api is False or self._showing_power_off_layout()
-        ):
+        if on and (self._screen_power_api is False or self._showing_power_off_layout()):
             # A power-off layout would keep the screen dark whatever the
             # power endpoint says, so it has to go first.
             await self.client.async_clear_layout()
