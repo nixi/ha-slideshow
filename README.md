@@ -21,7 +21,7 @@ Each player is added as one Home Assistant device:
 | `camera` | A live screenshot of what is actually on the display. |
 | `number` | Screen brightness. |
 | `sensor` | Current playlist, screen layout, last displayed file and time, last user activity, volume, screen brightness, free storage and storage used. Diagnostics for IP, versions, operating system, WebView, CPU temperature, boot and app start time. |
-| `switch` | Screen power, read back from `screenPower`. Devices whose screen SlideShow can drive — rooted ones and some signage displays — are switched directly. On the rest, this selects the layout SlideShow uses while a schedule has the display off. The media player's turn on/off does the same. |
+| `switch` | Screen power, read back from the player: on when the screen is powered and not showing a power-off layout. Devices whose screen SlideShow can drive — rooted ones and some signage displays — are switched directly. On the rest, this selects the layout SlideShow uses while a schedule has the display off. Turning it on while the player's own schedule has the display off shows the default layout until the schedule would show a layout anyway; the player then follows its schedule again by itself. The media player's turn on/off does the same. |
 | `binary_sensor` | Screen power, paused, plus diagnostics for rooted, device owner and lock task mode. |
 | `button` | Next, previous, toggle fullscreen, clear playlist, clear layout, activate and deactivate screensaver, beep, reload the app and reboot the device. |
 

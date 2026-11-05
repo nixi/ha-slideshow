@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from datetime import date
 from http import HTTPStatus
 from typing import Any
 
@@ -250,6 +251,22 @@ class SlideshowClient:
         """
         result = await self._request("GET", "layout/get")
         return result.get("layouts", [])
+
+    async def async_get_layout_schedule(
+        self, start: date, end: date
+    ) -> list[dict[str, Any]]:
+        """Return which layout the schedule shows when, from start to end.
+
+        Each interval has ``entityId`` (the layout's ID) and ``from`` and
+        ``to`` as naive local times, ``to`` being the last minute it covers.
+        Added in SlideShow 4.13.0.
+        """
+        result = await self._request(
+            "GET",
+            "schedule/layout",
+            {"from": start.isoformat(), "to": end.isoformat()},
+        )
+        return result.get("schedules", [])
 
     async def async_get_zone_content(self) -> list[dict[str, Any]]:
         """Return what each zone on screen, and the audio zone, is playing."""

@@ -29,6 +29,8 @@ from .const import (
     DEFAULT_SCREEN_OFF_LAYOUT,
     DOMAIN,
     PLAYLIST_REFRESH_INTERVAL,
+    SCHEDULE_OVERRIDE_FALLBACK,
+    SCHEDULE_OVERRIDE_MAX,
 )
 
 if TYPE_CHECKING:
@@ -305,12 +307,108 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         return detected or configured or DEFAULT_SCREEN_OFF_LAYOUT
 
+    def _is_power_off_layout(self, name: str | None) -> bool:
+        """Return whether a layout powers the screen down."""
+        if name in self.layouts:
+            return bool(self.layouts[name].get("powerOff"))
+        return name == self.screen_off_layout
+
     def _showing_power_off_layout(self) -> bool:
         """Return whether the screen is off because of the layout on it."""
-        current = (self.data or {}).get("currentScreenLayout")
-        if current in self.layouts:
-            return bool(self.layouts[current].get("powerOff"))
-        return current == self.screen_off_layout
+        return self._is_power_off_layout((self.data or {}).get("currentScreenLayout"))
+
+    @property
+    def screen_on(self) -> bool | None:
+        """Return whether the display is showing anything.
+
+        A power-off layout leaves nothing to see even while the backlight is
+        on, which happens when someone touches a player whose schedule has
+        the display off. ``screenPower`` alone would call that on.
+        """
+        if self.data is None:
+            return None
+        if self._showing_power_off_layout():
+            return False
+        return self.data.get("screenPower")
+
+    def _layout_to_show(self) -> dict[str, Any] | None:
+        """Return the layout to show when the schedule says power off.
+
+        The layout with the lowest ID that neither powers off nor is a
+        screensaver: SlideShow's own default layout comes first.
+        """
+        candidates = [
+            layout
+            for layout in self.layouts.values()
+            if not layout.get("powerOff")
+            and not layout.get("screensaver")
+            and layout.get("id") is not None
+        ]
+        return min(candidates, key=lambda layout: layout["id"], default=None)
+
+    async def _async_show_over_schedule(self) -> None:
+        """Show a layout if the player's schedule still has the screen off.
+
+        Clearing a layout only returns to the schedule, and a schedule can
+        itself say power off. The layout set here expires on the player when
+        the schedule would show a layout anyway, so the schedule gets the
+        screen back without Home Assistant having to remember anything.
+        """
+        if not self.layouts or (layout := self._layout_to_show()) is None:
+            return
+        try:
+            info = await self.client.async_get_device_info()
+        except SlideshowError as err:
+            # The screen still gets switched on; only the override is skipped.
+            _LOGGER.debug("Could not read the layout after clearing it: %s", err)
+            return
+        if not self._is_power_off_layout(info.get("currentScreenLayout")):
+            return
+        length = await self._async_until_schedule_shows_a_layout()
+        await self.client.async_set_layout(
+            layout_id=layout["id"], length=int(length.total_seconds())
+        )
+
+    async def _async_until_schedule_shows_a_layout(self) -> timedelta:
+        """Return how long the schedule keeps the screen powered off from now.
+
+        Back-to-back power-off intervals count as one, since the schedule
+        splits them at midnight.
+        """
+        now = dt_util.now(self.time_zone).replace(tzinfo=None)
+        try:
+            schedule = await self.client.async_get_layout_schedule(
+                now.date(), (now + SCHEDULE_OVERRIDE_MAX).date()
+            )
+        except SlideshowError as err:
+            _LOGGER.debug("Could not read the layout schedule: %s", err)
+            return SCHEDULE_OVERRIDE_FALLBACK
+
+        power_off = {
+            layout.get("id")
+            for layout in self.layouts.values()
+            if layout.get("powerOff")
+        }
+        intervals = []
+        for interval in schedule:
+            try:
+                start = datetime.fromisoformat(interval["from"])
+                # "to" is the last minute the interval covers.
+                end = datetime.fromisoformat(interval["to"]) + timedelta(minutes=1)
+            except (KeyError, TypeError, ValueError):
+                continue
+            intervals.append((start, end, interval.get("entityId")))
+
+        until = now
+        for start, end, layout_id in sorted(intervals, key=lambda i: i[:2]):
+            if end <= until:
+                continue
+            if start > until + timedelta(minutes=1) or layout_id not in power_off:
+                break
+            until = end
+        if until <= now:
+            return SCHEDULE_OVERRIDE_FALLBACK
+        return min(until - now, SCHEDULE_OVERRIDE_MAX)
 
     async def async_set_screen_power(self, on: bool) -> None:
         """Turn the screen on or off.
@@ -325,6 +423,7 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # power endpoint says, so it has to go first.
             await self.client.async_clear_layout()
             cleared = True
+            await self._async_show_over_schedule()
         else:
             cleared = False
 

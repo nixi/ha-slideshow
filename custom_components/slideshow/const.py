@@ -24,6 +24,13 @@ MIN_SCAN_INTERVAL: Final = 5
 # shrink or stretch with the configured scan interval.
 AUTH_GRACE_PERIOD: Final = timedelta(minutes=10)
 
+# Turning the screen on while the player's own schedule has it off shows a
+# layout until the schedule would show one anyway. When the schedule cannot
+# be read, the layout is shown for this long instead; it never stays longer
+# than the cap, so the schedule always gets the screen back.
+SCHEDULE_OVERRIDE_FALLBACK: Final = timedelta(hours=1)
+SCHEDULE_OVERRIDE_MAX: Final = timedelta(days=2)
+
 # Playlists are read on a slower cycle than the device status, since
 # content entries change rarely and cost an extra request.
 PLAYLIST_REFRESH_INTERVAL: Final = timedelta(minutes=5)

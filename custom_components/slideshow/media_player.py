@@ -302,7 +302,7 @@ class SlideshowMediaPlayer(SlideshowEntity, MediaPlayerEntity):
         so a powered-down screen is surfaced as ``off`` even though the app
         keeps running behind it.
         """
-        if self._data.get("screenPower") is False:
+        if self.coordinator.screen_on is False:
             return MediaPlayerState.OFF
         if self._data.get("paused"):
             return MediaPlayerState.PAUSED
