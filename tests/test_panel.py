@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,7 +20,9 @@ from custom_components.slideshow.const import CONF_PANEL_TITLE, DEFAULT_PANEL_TE
 from custom_components.slideshow.panel import (
     _SCRIPT,
     HEARTBEAT_SECONDS,
+    PANEL_CSP,
     STALE_MS,
+    _page,
     is_shipped_template,
 )
 
@@ -441,3 +444,291 @@ async def test_setup_drops_a_stored_shipped_default(
     # Template keeps its source stripped.
     rendered_from = entry.runtime_data.panel._template.template
     assert rendered_from == (stored if kept else DEFAULT_PANEL_TEMPLATE).strip()
+
+
+def _chrome() -> str | None:
+    """Return a Chrome or Chromium binary, if one is installed."""
+    for name in (
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+    ):
+        if found := shutil.which(name):
+            return found
+    mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    return mac if Path(mac).exists() else None
+
+
+# A 1x1 PNG.
+_PIXEL = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def _run_in_chrome(
+    renders: list[str],
+    *,
+    pause: float = 1.5,
+    budget: int = 6000,
+    fail=None,
+    delay: float = 0.0,
+    stats: dict | None = None,
+) -> tuple[str, list[str]]:
+    """Serve the real page shell and return its final #root and image requests.
+
+    The first event stream sends each render ``pause`` seconds apart; later
+    reconnects get the last render only. ``/img`` answers a PNG after
+    ``delay`` seconds, or 500 when ``fail(path, count)`` says so, where count
+    is how often that path (without the ss cache-buster) was asked for
+    before. ``stats["max_open"]`` records the most image requests open at
+    once.
+    """
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    requests: list[str] = []
+    lock = threading.Lock()
+    state = {"streams": 0, "open": 0, "max_open": 0}
+
+    def strip(path: str) -> str:
+        return re.sub(r"[?&]ss=\d+", "", path)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            if self.path.startswith("/img"):
+                with lock:
+                    state["open"] += 1
+                    state["max_open"] = max(state["max_open"], state["open"])
+                try:
+                    self._image()
+                finally:
+                    with lock:
+                        state["open"] -= 1
+            elif self.path.endswith("/events"):
+                self._events()
+            else:
+                body = _page("t").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Security-Policy", PANEL_CSP)
+                self.end_headers()
+                self.wfile.write(body)
+
+        def _image(self) -> None:
+            key = strip(self.path)
+            with lock:
+                count = sum(strip(r) == key for r in requests)
+                requests.append(self.path)
+            time.sleep(delay)
+            if fail and fail(key, count):
+                self.send_response(500)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(_PIXEL)))
+            self.end_headers()
+            self.wfile.write(_PIXEL)
+
+        def _events(self) -> None:
+            with lock:
+                state["streams"] += 1
+                first = state["streams"] == 1
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for n, html in enumerate(renders if first else renders[-1:]):
+                if n:
+                    time.sleep(pause)
+                self.wfile.write(f"data: {json.dumps(html)}\n\n".encode())
+                self.wfile.flush()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = subprocess.run(
+            [
+                _chrome(),
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-gpu",
+                f"--virtual-time-budget={budget}",
+                "--dump-dom",
+                f"http://127.0.0.1:{server.server_address[1]}/api/slideshow/panel/s",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=True,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    if stats is not None:
+        stats["max_open"] = state["max_open"]
+    match = re.search(
+        r'<div id="root">(.*?)</div>\s*<div id="offline"', result.stdout, re.S
+    )
+    return (match.group(1) if match else result.stdout), requests
+
+
+needs_chrome = [
+    pytest.mark.enable_socket,
+    pytest.mark.skipif(_chrome() is None, reason="needs Chrome"),
+]
+
+
+@pytest.mark.parametrize("_", [None], ids=["chrome"])
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_patches_renders_and_refreshes_images(_) -> None:
+    """In a real browser, renders are patched in and images refresh.
+
+    A render changes only what differs, and an image marked data-ss-src is
+    fetched again and again, following a new token.
+    """
+    image = '<img id="cam" data-ss-src="/img?token={}" data-ss-refresh="0.5">'
+    root, requests = _run_in_chrome(
+        [
+            '<p id="a">one</p>' + image.format("A"),
+            '<p id="a">two</p>' + image.format("B"),
+        ],
+        pause=0,
+    )
+
+    assert '<p id="a">two</p>' in root
+    # The image carries the src the page set, with the new token.
+    assert re.search(r'<img id="cam"[^>]* src="[^"]*/img\?token=B&amp;ss=\d+"', root)
+    assert len([r for r in requests if "token=B" in r]) >= 2, requests
+    assert all("&ss=" in r for r in requests)
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_never_shows_one_camera_under_another() -> None:
+    """When a camera block goes away, the next one does not inherit its picture."""
+    root, _ = _run_in_chrome(
+        [
+            '<h2>Front</h2><img data-ss-src="/img?cam=front">'
+            '<h2>Garage</h2><img data-ss-src="/img?cam=garage">',
+            '<h2>Garage</h2><img data-ss-src="/img?cam=garage">',
+        ],
+        fail=lambda path, count: "garage" in path,
+    )
+
+    assert "<h2>Garage</h2>" in root
+    assert "cam=front" not in root
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_keeps_a_moved_images_last_picture() -> None:
+    """An image shifted by new content shows its last still, not a blank."""
+    root, requests = _run_in_chrome(
+        [
+            '<img id="cam" data-ss-src="/img?cam=a">',
+            '<p>banner</p><img id="cam" data-ss-src="/img?cam=a">',
+        ],
+        # The first still loads; every later request fails.
+        fail=lambda path, count: count > 0,
+    )
+
+    assert "<p>banner</p>" in root
+    assert re.search(r'<img id="cam"[^>]* src="[^"]*/img\?cam=a&amp;ss=\d+"', root), (
+        root,
+        requests,
+    )
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_survives_markup_named_like_a_dom_method() -> None:
+    """A named element cannot shadow what the page needs to patch."""
+    root, _ = _run_in_chrome(
+        [
+            '<p id="a">one</p><img name="importNode" alt="">',
+            '<p id="a">two</p><img name="importNode" alt=""><p id="b">added</p>',
+        ]
+    )
+
+    assert '<p id="a">two</p>' in root
+    assert '<p id="b">added</p>' in root
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_refreshes_an_image_with_a_fragment() -> None:
+    """The cache-buster goes before a #fragment, or nothing would change."""
+    _, requests = _run_in_chrome(
+        ['<img data-ss-src="/img?cam=f#x" data-ss-refresh="0.3">'], budget=4000
+    )
+
+    assert len(requests) >= 2, requests
+    assert all(re.search(r"cam=f&ss=\d+$", r) for r in requests), requests
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_retries_a_failed_image() -> None:
+    """A still that failed is fetched again, even without data-ss-refresh."""
+    root, requests = _run_in_chrome(
+        ['<img id="cam" data-ss-src="/img?cam=r">'],
+        budget=15000,
+        fail=lambda path, count: count == 0,
+    )
+
+    assert len(requests) >= 2, requests
+    assert re.search(r'<img id="cam"[^>]* src="[^"]*/img\?cam=r&amp;ss=\d+"', root)
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param("<p>alert</p>", id="shifted"),
+        # An attribute name setAttribute rejects sends every render down the
+        # innerHTML fallback, which makes every element anew.
+        pytest.param('<p =x="{n}">alert</p>', id="fallback"),
+    ],
+)
+def test_page_keeps_a_camera_alive_through_fast_renders(extra: str) -> None:
+    """A camera recreated faster than it answers keeps updating.
+
+    Neither the shifted element nor the innerHTML fallback may freeze it or
+    open a second request for it.
+    """
+    image = '<img id="cam" data-ss-src="/img?cam=a" data-ss-refresh="0.3">'
+    renders = [
+        (extra.format(n=n) if n % 2 else "") + f'<p id="n">{n}</p>' + image
+        for n in range(8)
+    ]
+    stats: dict = {}
+    root, requests = _run_in_chrome(
+        renders, pause=0.2, delay=0.3, budget=4000, stats=stats
+    )
+
+    assert '<p id="n">7</p>' in root
+    assert re.search(r'<img id="cam"[^>]* src="[^"]*/img\?cam=a&amp;ss=\d+"', root), (
+        root,
+        requests,
+    )
+    assert stats["max_open"] == 1, requests
+
+
+@needs_chrome[0]
+@needs_chrome[1]
+def test_page_updates_a_form_whose_control_shadows_dom_properties() -> None:
+    """A control named childNodes cannot hide a form's new contents."""
+    form = '<form class="c{0}"><input name="childNodes"><span>{1}</span></form>'
+    root, _ = _run_in_chrome([form.format(0, "old"), form.format(1, "new")], pause=0.5)
+
+    assert '<form class="c1">' in root
+    assert "<span>new</span>" in root

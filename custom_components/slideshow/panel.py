@@ -81,6 +81,176 @@ _SCRIPT = """
   var src = null;
   var retry = null;
   var watchdog = null;
+  var refresher = null;
+  // Captured before any template markup exists: a named element in a render
+  // (<img name="importNode">) would otherwise shadow document.importNode.
+  var importNode = typeof Document === 'undefined' ? null
+                                                  : Document.prototype.importNode;
+  // Timing that a change of the wall clock cannot freeze.
+  var clock = typeof performance !== 'undefined' && performance.now
+    ? function () { return performance.now(); }
+    : function () { return new Date().getTime(); };
+  // One loader per picture source, so its state outlives the elements that
+  // show it: an element that is replaced keeps the last still and the load
+  // already under way.
+  var loaders = {};
+
+  // What a refreshing image shows: its address without the token or
+  // signature Home Assistant rotates, so a camera whose token changes is
+  // still the same camera, while two cameras never are.
+  function source(el) {
+    var url = el.getAttribute && el.getAttribute('data-ss-src');
+    if (url === null || url === undefined) { return null; }
+    return url.split('#')[0]
+      .replace(/([?&])(token|authSig)=[^&]*/g, '$1')
+      .replace(/&&+/g, '&').replace(/[?]&/, '?').replace(/[?&]$/, '');
+  }
+
+  // Bring the live markup in line with a new render, changing only what
+  // differs. Untouched elements stay, so an image is not fetched again and
+  // nothing flickers when one value changes.
+  function patch(live, next) {
+    var have = live.childNodes, want = next.childNodes, i, a, b;
+    for (i = 0; i < want.length; i++) {
+      a = have[i]; b = want[i];
+      if (!a) {
+        live.appendChild(importNode.call(document, b, true));
+      } else if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName ||
+                 a.nodeName === 'FORM' ||
+                 (a.nodeType === 1 && source(a) !== source(b))) {
+        // A form is replaced whole, since a control named like a DOM
+        // property (childNodes, attributes) would hide its contents. A
+        // refreshing image that now shows something else is replaced, so
+        // the previous picture can never linger under the new one.
+        live.replaceChild(importNode.call(document, b, true), a);
+      } else if (a.nodeType === 1) {
+        attributes(a, b);
+        patch(a, b);
+      } else if (a.nodeValue !== b.nodeValue) {
+        a.nodeValue = b.nodeValue;
+      }
+    }
+    while (have.length > want.length) { live.removeChild(live.lastChild); }
+  }
+
+  function attributes(a, b) {
+    // A refreshing image's src belongs to this script, not the template.
+    var own = source(a) !== null, i, at;
+    for (i = a.attributes.length - 1; i >= 0; i--) {
+      at = a.attributes[i];
+      if (own && at.name === 'src') { continue; }
+      if (at.namespaceURI ? !b.hasAttributeNS(at.namespaceURI, at.localName)
+                          : !b.hasAttribute(at.name)) {
+        if (at.namespaceURI) { a.removeAttributeNS(at.namespaceURI, at.localName); }
+        else { a.removeAttribute(at.name); }
+      }
+    }
+    for (i = 0; i < b.attributes.length; i++) {
+      at = b.attributes[i];
+      if (own && at.name === 'src') { continue; }
+      if (at.namespaceURI) {
+        if (a.getAttributeNS(at.namespaceURI, at.localName) !== at.value) {
+          a.setAttributeNS(at.namespaceURI, at.name, at.value);
+        }
+      } else if (a.getAttribute(at.name) !== at.value) {
+        a.setAttribute(at.name, at.value);
+      }
+    }
+  }
+
+  function refreshing() {
+    return root.querySelectorAll ? root.querySelectorAll('img[data-ss-src]') : [];
+  }
+
+  function render(html) {
+    try {
+      var doc = new DOMParser().parseFromString(
+        '<!doctype html><body>' + html, 'text/html');
+      patch(root, doc.body);
+    } catch (err) {
+      // No DOMParser, or markup this browser cannot patch: start over.
+      root.innerHTML = html;
+    }
+    refresh();
+  }
+
+  // <img data-ss-src="..." data-ss-refresh="2"> shows a still image and
+  // fetches a fresh one every 2 seconds: the way to show a camera, since
+  // older WebViews neither draw an MJPEG stream nor let go of it. The next
+  // picture loads off-screen and is swapped in once complete. A source has
+  // at most one request open; one that hangs is abandoned after 30 seconds,
+  // a failed one is tried again after 10, and one no longer on the page is
+  // dropped.
+  function refresh() {
+    clearTimeout(refresher);
+    refresher = null;
+    var list = refreshing(), now = clock(), seen = {}, i, img, key, l, wait;
+    for (i = 0; i < list.length; i++) {
+      img = list[i];
+      key = source(img);
+      l = loaders[key];
+      if (!l) {
+        l = loaders[key] = {next: null, started: 0, at: 0, failed: false,
+                            src: null, base: null, url: null, every: 0};
+      }
+      if (!seen[key]) {
+        seen[key] = true;
+        l.url = img.getAttribute('data-ss-src');
+        l.every = (parseFloat(img.getAttribute('data-ss-refresh')) || 0) * 1000;
+      }
+      if (l.src && img.getAttribute('src') !== l.src) {
+        img.setAttribute('src', l.src);
+      }
+    }
+    for (key in loaders) {
+      if (!loaders.hasOwnProperty(key)) { continue; }
+      l = loaders[key];
+      if (!seen[key]) {
+        abandon(l);
+        delete loaders[key];
+        continue;
+      }
+      if (l.next) {
+        if (now - l.started < 30000) { continue; }
+        abandon(l);
+        l.failed = true;
+      }
+      wait = l.failed ? (l.every > 0 ? Math.min(l.every, 10000) : 10000) : l.every;
+      if (l.base !== l.url || (wait > 0 && now - l.at >= wait)) { load(key, l, now); }
+    }
+    if (list.length) { refresher = setTimeout(refresh, 250); }
+  }
+
+  function abandon(l) {
+    if (!l.next) { return; }
+    l.next.onload = l.next.onerror = null;
+    l.next.src = '';
+    l.next = null;
+  }
+
+  function load(key, l, now) {
+    var url = l.url, cut = url.indexOf('#'), tail = '', next = new Image();
+    if (cut >= 0) { tail = url.slice(cut); url = url.slice(0, cut); }
+    l.next = next;
+    l.started = now;
+    l.base = l.url;
+    function done(ok) {
+      if (l.next !== next) { return; }
+      l.next = null;
+      l.at = clock();
+      l.failed = !ok;
+      if (!ok) { return; }
+      l.src = next.src;
+      var list = refreshing(), i;
+      for (i = 0; i < list.length; i++) {
+        if (source(list[i]) === key) { list[i].setAttribute('src', l.src); }
+      }
+    }
+    next.onload = function () { done(true); };
+    next.onerror = function () { done(false); };
+    next.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 'ss=' +
+      new Date().getTime() + tail;
+  }
 
   function watch() {
     clearTimeout(watchdog);
@@ -110,7 +280,7 @@ _SCRIPT = """
     es.onopen = alive;
     es.onmessage = function (e) {
       alive();
-      try { root.innerHTML = JSON.parse(e.data); } catch (err) {}
+      try { render(JSON.parse(e.data)); } catch (err) {}
     };
     es.addEventListener('ping', alive);
     es.onerror = function () {

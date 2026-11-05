@@ -220,6 +220,23 @@ come out invisible the way sent HTML can. These classes are available: `ss-grid`
 `ss-card`, `ss-label`, `ss-big`, `ss-mid`, `ss-muted`, `ss-list`, and `ss-ok` / `ss-warn` /
 `ss-bad` for state colours. Your template can include its own `<style>` block as well.
 
+**Images and cameras.** A render only changes what differs on the page, so an image that is
+already showing stays put. For a picture that changes on its own, such as a camera, use
+`data-ss-src` instead of `src`, with `data-ss-refresh` in seconds:
+
+```jinja
+{%- set cam = 'camera.front_door' %}
+<img data-ss-src="/api/camera_proxy/{{ cam }}?token={{ state_attr(cam, 'access_token') }}"
+     data-ss-refresh="2" style="width:100%">
+```
+
+The page fetches a fresh still every two seconds, loads it off-screen and swaps it in once it
+is complete, so it never flickers and never has more than one request open per image. The
+camera's token changes every few minutes, which re-renders the template, and the page follows
+the new address. Do not use `/api/camera_proxy_stream` (MJPEG) on a player: older Android
+WebViews do not draw it, and they keep the connection open, which after a few renders uses up
+the connections the page has and stops every other image from loading.
+
 **Escape what you show.** The template's output is inserted into the page as HTML, and the
 page is served from your Home Assistant address. Some values can be written by other
 people — a calendar invite sets an event title, a transit feed sets a destination — so
