@@ -52,6 +52,7 @@ from .const import (
     MIN_SCAN_INTERVAL,
 )
 from .coordinator import SlideshowConfigEntry
+from .panel import is_shipped_template
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -299,6 +300,14 @@ class SlideshowOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            # The form is pre-filled with the default template. Storing that
+            # copy would pin this entry to it and hide later fixes.
+            if is_shipped_template(user_input.get(CONF_PANEL_TEMPLATE, "")):
+                user_input = {
+                    key: value
+                    for key, value in user_input.items()
+                    if key != CONF_PANEL_TEMPLATE
+                }
             return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options

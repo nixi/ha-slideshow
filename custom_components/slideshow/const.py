@@ -123,6 +123,17 @@ DEFAULT_SCREEN_OFF_LAYOUT: Final = "Screen power off"
 DEFAULT_MEDIA_DURATION: Final = 3600
 
 
+# sha256 of each earlier DEFAULT_PANEL_TEMPLATE, stripped. The options form is
+# pre-filled with the default, so saving it once used to store a copy, and
+# that copy would never pick up later fixes. A stored copy of any of these is
+# treated as unset. Add the hash of the current default whenever it changes.
+PREVIOUS_DEFAULT_PANEL_TEMPLATE_HASHES: Final = frozenset(
+    {
+        # 0.6.0 - 0.9.2, before entity data was escaped.
+        "5c1b82c539231cc366b590f43f50444b9940deb299dc8d5b2a5c95c4ac593781",
+    }
+)
+
 # Shipped as the starting point for the live panel. The three lists at the top
 # are the only part most people need to touch, so they are kept together.
 DEFAULT_PANEL_TEMPLATE: Final = """\

@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
 
 from custom_components.slideshow.const import CONF_PANEL_TITLE, DEFAULT_PANEL_TEMPLATE
+from custom_components.slideshow.panel import is_shipped_template
 
 PATH = "/api/slideshow/panel/test-secret"
 
@@ -169,3 +170,45 @@ async def test_page_title_is_escaped(
     body = await (await client.get(PATH)).text()
 
     assert "<title>&lt;/title&gt;&lt;b&gt;x</title>" in body
+
+
+OLD_DEFAULT = (
+    Path(__file__).parent / "fixtures" / "panel_default_0_9_2.jinja"
+).read_text()
+
+
+def test_earlier_defaults_are_recognised() -> None:
+    """A stored copy of an earlier default, however it was saved, is not the user's."""
+    assert is_shipped_template(DEFAULT_PANEL_TEMPLATE)
+    assert is_shipped_template(OLD_DEFAULT)
+    # The UI's text field may hand it back with CRLF line ends or trimmed.
+    assert is_shipped_template(OLD_DEFAULT.replace("\n", "\r\n").strip())
+    assert is_shipped_template("")
+    assert not is_shipped_template(OLD_DEFAULT + "<b>mine</b>")
+
+
+@pytest.mark.parametrize(
+    ("stored", "kept"),
+    [
+        pytest.param(OLD_DEFAULT, False, id="old-default"),
+        pytest.param(DEFAULT_PANEL_TEMPLATE, False, id="current-default"),
+        pytest.param("<b>{{ states('sun.sun') | e }}</b>", True, id="custom"),
+    ],
+)
+async def test_setup_drops_a_stored_shipped_default(
+    hass: HomeAssistant, mock_device, mock_config_entry, stored: str, kept: bool
+) -> None:
+    """Entries that saved the old unescaped default move onto the current one."""
+    entry = mock_config_entry
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        entry, options={"panel_template": stored, CONF_PANEL_TITLE: "Hall"}
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.options[CONF_PANEL_TITLE] == "Hall"
+    assert ("panel_template" in entry.options) is kept
+    # Template keeps its source stripped.
+    rendered_from = entry.runtime_data.panel._template.template
+    assert rendered_from == (stored if kept else DEFAULT_PANEL_TEMPLATE).strip()

@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.slideshow.api import SlideshowAuthError
-from custom_components.slideshow.const import DOMAIN
+from custom_components.slideshow.const import DEFAULT_PANEL_TEMPLATE, DOMAIN
 
 from .const import BASE, DEVICE_INFO, USER_INPUT
 
@@ -132,3 +132,23 @@ async def test_options_flow_stores_the_panel_template(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert init_integration.options["panel_template"] == "<b>hi</b>"
     assert init_integration.options["screen_off_layout"] == "Skärm av"
+
+
+async def test_options_flow_does_not_store_the_default_template(
+    hass: HomeAssistant, aioclient_mock, init_integration
+) -> None:
+    """Saving the pre-filled default must not pin the entry to that copy."""
+    result = await hass.config_entries.options.async_init(init_integration.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            "scan_interval": 60,
+            "screen_off_layout": "Screen off",
+            "panel_title": "Hall",
+            "panel_template": DEFAULT_PANEL_TEMPLATE.replace("\n", "\r\n"),
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert "panel_template" not in init_integration.options
+    assert init_integration.options["scan_interval"] == 60

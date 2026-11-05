@@ -33,7 +33,14 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.template import Template
 
-from .const import CONF_PANEL_SECRET, CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE, DOMAIN
+from .const import (
+    CONF_PANEL_SECRET,
+    CONF_PANEL_TITLE,
+    DEFAULT_PANEL_TEMPLATE,
+    DEFAULT_PANEL_TITLE,
+    DOMAIN,
+    PREVIOUS_DEFAULT_PANEL_TEMPLATE_HASHES,
+)
 
 if TYPE_CHECKING:
     from .coordinator import SlideshowConfigEntry
@@ -173,6 +180,19 @@ class PanelRenderer:
     def async_unsubscribe(self, queue: asyncio.Queue[str | None]) -> None:
         """Remove a viewer."""
         self._subscribers.discard(queue)
+
+
+def is_shipped_template(template: str) -> bool:
+    """Return whether a template is the current or an earlier shipped default.
+
+    Such a template is not the user's own work, so it is not stored: the panel
+    then follows the default, and fixes to it reach every player.
+    """
+    text = template.replace("\r\n", "\n").strip()
+    if not text or text == DEFAULT_PANEL_TEMPLATE.strip():
+        return True
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    return digest in PREVIOUS_DEFAULT_PANEL_TEMPLATE_HASHES
 
 
 def _error_markup(message: str) -> str:

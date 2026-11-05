@@ -45,6 +45,7 @@ from .panel import (
     NO_URL_MESSAGE,
     PanelRenderer,
     async_register_views,
+    is_shipped_template,
     panel_base_url,
     panel_path,
 )
@@ -125,12 +126,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlideshowConfigEntry) ->
             data={**entry.data, CONF_PANEL_SECRET: secrets.token_urlsafe(32)},
         )
 
+    # A stored copy of a shipped default is dropped, so this entry follows the
+    # current default and its fixes. The update listener is not attached yet,
+    # so this does not trigger a reload.
+    template = entry.options.get(CONF_PANEL_TEMPLATE)
+    if template is not None and is_shipped_template(template):
+        hass.config_entries.async_update_entry(
+            entry,
+            options={
+                key: value
+                for key, value in entry.options.items()
+                if key != CONF_PANEL_TEMPLATE
+            },
+        )
+        template = None
+
     async_register_views(hass)
-    panel = PanelRenderer(
-        hass,
-        entry,
-        entry.options.get(CONF_PANEL_TEMPLATE) or DEFAULT_PANEL_TEMPLATE,
-    )
+    panel = PanelRenderer(hass, entry, template or DEFAULT_PANEL_TEMPLATE)
     await panel.async_start()
     entry.async_on_unload(panel.async_stop)
     coordinator.panel = panel
