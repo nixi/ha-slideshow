@@ -147,6 +147,8 @@ async def test_options_flow_stores_the_panel_template(
             "panel_template": "<b>hi</b>",
         },
     )
+    # Saving reloads the entry; let that finish inside the test.
+    await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert init_integration.options["panel_template"] == "<b>hi</b>"
@@ -167,6 +169,8 @@ async def test_options_flow_does_not_store_the_default_template(
             "panel_template": DEFAULT_PANEL_TEMPLATE.replace("\n", "\r\n"),
         },
     )
+    # Saving reloads the entry; let that finish inside the test.
+    await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert "panel_template" not in init_integration.options
