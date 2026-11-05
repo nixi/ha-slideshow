@@ -94,3 +94,21 @@ async def test_slow_screenshot_is_kept_for_the_next_request(
 
     assert image.content == JPEG
     assert calls == 1
+
+
+async def test_unexpected_screenshot_error_is_logged(
+    hass: HomeAssistant, init_integration, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Nothing awaits the background fetch, so it must handle every error."""
+    entity = hass.data["camera"].get_entity("camera.frame_screenshot")
+
+    async def broken_screenshot() -> bytes:
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    with patch.object(entity.client, "async_get_screenshot", broken_screenshot):
+        assert await entity.async_camera_image() is None
+        await hass.async_block_till_done()
+
+    assert entity._fetch.done()
+    assert entity._fetch.exception() is None
+    assert "Unexpected error fetching a screenshot" in caplog.text

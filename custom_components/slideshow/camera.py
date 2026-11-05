@@ -85,4 +85,9 @@ class SlideshowScreenshotCamera(SlideshowEntity, Camera):
         except SlideshowError as err:
             _LOGGER.debug("Could not fetch screenshot: %s", err)
             return
+        except Exception:
+            # Nothing awaits this task, so anything else would only surface
+            # as "Task exception was never retrieved".
+            _LOGGER.exception("Unexpected error fetching a screenshot")
+            return
         self._cached_at = dt_util.utcnow()

@@ -363,7 +363,8 @@ async def test_shipped_templates_escape_entity_data(
 
     rendered = Template(template_str, hass).async_render(parse_result=False)
 
-    assert "<img" not in rendered
+    # Case-insensitive: the title filter turns a raw tag into <Img ... Onerror=.
+    assert "<img" not in rendered.lower()
     assert "&lt;img src=x onerror=&#34;alert(1)&#34;&gt;" in rendered
 
 
@@ -379,7 +380,9 @@ async def test_page_pins_its_script_with_a_csp(
     script = body.split("<script>", 1)[1].split("</script>", 1)[0]
     digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
     assert f"script-src 'sha256-{digest}'" in csp
-    assert "unsafe-inline" not in csp
+    # 'unsafe-inline' only helps WebViews too old to know hashes; with a hash
+    # present, every browser that knows hashes ignores it.
+    assert csp.startswith(f"script-src 'sha256-{digest}' 'unsafe-inline';")
     assert "object-src 'none'" in csp
 
 

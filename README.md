@@ -230,7 +230,9 @@ end every value you interpolate with `| e`, as the shipped default and the examp
 ```
 
 Leave `| e` off only for markup you wrote yourself. The page also sends a
-Content-Security-Policy that allows no script but its own, as a second line of defence.
+Content-Security-Policy that allows no script but its own, as a second line of defence
+on any player whose WebView is new enough to honour it; on older ones, escaping is the
+only protection.
 
 > [!IMPORTANT]
 > **Load the URL directly — do not put it in an `<iframe>`.** Home Assistant sends
@@ -353,9 +355,10 @@ data:
 
 ## Sample content
 
-[`samples/`](samples/) holds a starter pack. Each release carries it as `samples.zip`
-under **Assets** on the [releases page](https://github.com/nixi/ha-slideshow/releases), or
-zip the folder's contents yourself. Upload the ZIP through the web interface (menu
+[`samples/`](samples/) holds a starter pack. Releases from 0.9.3 on carry it as
+`samples.zip` under **Assets** on the
+[latest release](https://github.com/nixi/ha-slideshow/releases/latest), or zip the
+folder's contents yourself. Upload the ZIP through the web interface (menu
 **Files**) — SlideShow unpacks it automatically — then add the slides to a playlist.
 
 - `slides/01.jpg` … `05.jpg` — five numbered slides, so playlist cycling, next/previous

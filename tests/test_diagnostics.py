@@ -48,3 +48,22 @@ async def test_errors_do_not_reveal_the_address(
     assert "error" in result["zones"]
     assert "error" in result["displays"]
     assert HOST not in str(result)
+
+
+async def test_resolved_addresses_are_redacted_too(
+    hass: HomeAssistant, hass_client, aioclient_mock, init_integration
+) -> None:
+    """A host set as a name still resolves to an address the error names."""
+    aioclient_mock.get(
+        re.compile(r"/ajax/zones"),
+        exc=ClientConnectionError("Connect call failed ('192.168.11.184', 8080)"),
+    )
+    aioclient_mock.get(
+        re.compile(r"/ajax/displayInfo"),
+        exc=ClientConnectionError("Connect call failed ('fd00::1:2', 8080)"),
+    )
+
+    result = await get_diagnostics_for_config_entry(hass, hass_client, init_integration)
+
+    assert "192.168.11.184" not in str(result)
+    assert "fd00::1:2" not in str(result)

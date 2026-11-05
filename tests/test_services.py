@@ -529,3 +529,20 @@ async def test_remote_control(
 
     call = next(c for c in aioclient_mock.mock_calls if endpoint in str(c[1]))
     assert dict(call[1].query) == query
+
+
+async def test_show_camera_rejects_an_impossible_duration(
+    hass: HomeAssistant, init_integration
+) -> None:
+    """A duration too long to sign a URL for is a validation error, not a crash."""
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "show_camera",
+            {
+                ATTR_ENTITY_ID: ENTITY,
+                "camera_entity_id": "camera.frame_screenshot",
+                "duration": 10**15,
+            },
+            blocking=True,
+        )

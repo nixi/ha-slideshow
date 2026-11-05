@@ -86,6 +86,8 @@ _LOGGER = logging.getLogger(__name__)
 # A camera is a pop-up, such as a doorbell, so it should not hold the screen
 # for long unless asked to.
 DEFAULT_CAMERA_DURATION = 60
+# Large enough for "until further notice", small enough to sign a URL for.
+MAX_DURATION = 2**31 - 1
 
 # How much longer than the requested duration a signed camera still address
 # stays valid, so a slow start or a late last reload is still let in.
@@ -196,7 +198,7 @@ async def async_setup_entry(
         {
             vol.Required(ATTR_CAMERA_ENTITY_ID): cv.entity_id,
             vol.Optional(ATTR_DURATION, default=DEFAULT_CAMERA_DURATION): vol.All(
-                vol.Coerce(int), vol.Range(min=1)
+                vol.Coerce(int), vol.Range(min=1, max=MAX_DURATION)
             ),
             **ZONE_SCHEMA,
         },

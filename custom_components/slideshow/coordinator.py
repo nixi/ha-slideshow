@@ -36,6 +36,11 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+#: hass.data key: entry ID to when the player started rejecting its stored
+#: credentials. Kept outside the coordinator because every setup retry builds
+#: a new one, and a clock that restarted with it would never run out.
+_AUTH_REJECTED_SINCE = f"{DOMAIN}_auth_rejected_since"
+
 type SlideshowConfigEntry = ConfigEntry[SlideshowCoordinator]
 
 #: Device registry fields that follow the player, and the deviceInfo key for each.
@@ -74,7 +79,6 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #: Playlist name to playlist ID, from the player's content entries.
         self.playlists: dict[str, int] = {}
         self._playlists_read: datetime | None = None
-        self._auth_rejected_since: datetime | None = None
         #: The player's own time zone, for the naive timestamps it reports.
         self.time_zone: tzinfo = dt_util.get_default_time_zone()
         self._time_zone_name: str | None = None
@@ -89,18 +93,31 @@ class SlideshowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #: Whether ``screen/power`` works here; ``None`` until first tried.
         self._screen_power_api: bool | None = None
 
+    @property
+    def _auth_rejected_since(self) -> datetime | None:
+        """Return when the player started rejecting the stored credentials.
+
+        This survives setup retries, so a player that rejects good
+        credentials while it starts up gets the same grace period during
+        setup as later, and one that keeps rejecting still ends in reauth.
+        """
+        return self.hass.data.get(_AUTH_REJECTED_SINCE, {}).get(
+            self.config_entry.entry_id
+        )
+
+    @_auth_rejected_since.setter
+    def _auth_rejected_since(self, value: datetime | None) -> None:
+        rejected = self.hass.data.setdefault(_AUTH_REJECTED_SINCE, {})
+        if value is None:
+            rejected.pop(self.config_entry.entry_id, None)
+        else:
+            rejected[self.config_entry.entry_id] = value
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the current device status."""
         try:
             data = await self.client.async_get_device_info()
         except SlideshowAuthError as err:
-            # During setup there is no grace: every retry builds a new
-            # coordinator, so the clock below would never run out and the
-            # user would never be asked. The reauth flow checks the stored
-            # credentials again first, so a passing rejection still asks
-            # nobody anything.
-            if self.data is None:
-                raise ConfigEntryAuthFailed(str(err)) from err
             # A player can reject perfectly good credentials for a moment --
             # while it is starting up, or being reconfigured. Asking the user
             # to retype a password that never changed is worse than waiting,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
@@ -11,6 +12,12 @@ from homeassistant.core import HomeAssistant
 from .api import SlideshowError
 from .const import CONF_PANEL_SECRET
 from .coordinator import SlideshowConfigEntry
+
+# IPv4 and IPv6 literals. A connection error names the address the host
+# resolved to, which differs from the configured host when that is a name.
+_ADDRESS = re.compile(
+    r"\b\d{1,3}(?:\.\d{1,3}){3}\b|\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b"
+)
 
 TO_REDACT = {
     CONF_HOST,
@@ -33,7 +40,8 @@ async def async_get_config_entry_diagnostics(
     def error(err: SlideshowError) -> dict[str, str]:
         # Connection errors name the player's address, which is redacted
         # everywhere else in the report.
-        return {"error": str(err).replace(entry.data[CONF_HOST], REDACTED)}
+        text = str(err).replace(entry.data[CONF_HOST], REDACTED)
+        return {"error": _ADDRESS.sub(REDACTED, text)}
 
     try:
         zones: Any = await coordinator.client.async_get_zones()

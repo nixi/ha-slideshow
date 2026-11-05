@@ -44,6 +44,12 @@ async def test_user_flow_creates_entry(hass: HomeAssistant, aioclient_mock) -> N
         ({"text": "<html>Router login</html>"}, "cannot_connect"),
         ({"content": b"\xff\xfe\x00"}, "cannot_connect"),
         ({"json": ["not", "an", "object"]}, "cannot_connect"),
+        (
+            {"status": 301, "headers": {"Location": "https://192.0.2.10/"}},
+            "cannot_connect",
+        ),
+        ({"status": 405}, "cannot_connect"),
+        ({"status": 500, "content": b"\xff\xd8 binary"}, "cannot_connect"),
     ],
 )
 async def test_user_flow_errors(

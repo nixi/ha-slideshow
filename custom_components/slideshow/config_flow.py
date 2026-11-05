@@ -36,12 +36,11 @@ from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.template import Template
 
 from .api import (
+    SlideshowApiError,
     SlideshowAuthError,
     SlideshowClient,
     SlideshowConnectionError,
     SlideshowError,
-    SlideshowInvalidResponseError,
-    SlideshowNotSupportedError,
 )
 from .const import (
     CONF_PANEL_TEMPLATE,
@@ -68,11 +67,9 @@ _LOGGER = logging.getLogger(__name__)
 #: Errors meaning no SlideShow player answers at the address: nothing does,
 #: or something else does -- a router's admin page, a NAS, a mistyped IP.
 #: Either way the address is the user's to fix, not a fault worth a traceback.
-CANNOT_CONNECT_ERRORS = (
-    SlideshowConnectionError,
-    SlideshowInvalidResponseError,
-    SlideshowNotSupportedError,
-)
+#: A real player always answers deviceInfo, so any API error there -- a 404,
+#: a redirect to HTTPS, a 500, an answer that is not JSON -- means the same.
+CANNOT_CONNECT_ERRORS = (SlideshowConnectionError, SlideshowApiError)
 
 STEP_USER_SCHEMA = vol.Schema(
     {

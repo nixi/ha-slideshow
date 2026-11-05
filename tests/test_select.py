@@ -59,6 +59,10 @@ async def test_unknown_option_is_rejected(
     next read has listed it.
     """
     aioclient_mock.clear_requests()
+    # Answer anything, so a request would be counted rather than raise.
+    aioclient_mock.get(re.compile(r"/ajax/"), json={"success": True, "result": {}})
+    aioclient_mock.put(re.compile(r"/ajax/"), json={"success": True})
+    aioclient_mock.post(re.compile(r"/ajax/"), json={"success": True})
 
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(

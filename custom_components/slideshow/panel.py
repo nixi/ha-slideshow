@@ -128,8 +128,11 @@ _SCRIPT = """
 })();
 """.replace("__STALE_MS__", str(STALE_MS))
 _SCRIPT_HASH = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
+# 'unsafe-inline' is only for WebViews too old to know hash sources, which
+# would otherwise block the page's own script. Any browser that knows them
+# ignores 'unsafe-inline' when a hash is present.
 PANEL_CSP = (
-    f"script-src 'sha256-{_SCRIPT_HASH}'; "
+    f"script-src 'sha256-{_SCRIPT_HASH}' 'unsafe-inline'; "
     "object-src 'none'; base-uri 'none'; form-action 'none'"
 )
 

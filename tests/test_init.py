@@ -14,6 +14,7 @@ from custom_components.slideshow.const import (
     DEFAULT_PANEL_TEMPLATE,
     DOMAIN,
 )
+from custom_components.slideshow.coordinator import _AUTH_REJECTED_SINCE
 
 from .common import mock_status_reads
 from .const import BASE, CONTENT, DEVICE_INFO, USER_INPUT
@@ -84,14 +85,15 @@ def _reauth_flows(hass: HomeAssistant) -> list:
     ]
 
 
-async def test_rejection_during_setup_starts_reauth(
+async def test_rejection_during_setup_waits_out_the_grace_period(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
-    """A rejection while setting up asks for new credentials straight away.
+    """A rejection while setting up is retried first, then asks the user.
 
-    Every setup retry builds a new coordinator, so a grace period counted on
-    it would start again on each retry and the user would never be asked.
-    The reauth flow checks the stored credentials once more before asking.
+    A player and Home Assistant often start together after a power cut, and
+    the player can reject good credentials for its first seconds. The grace
+    clock is kept outside the coordinator, so it keeps running across setup
+    retries and a lasting rejection still ends in reauth.
     """
     aioclient_mock.get(
         f"{BASE}/ajax/deviceInfo", status=303, headers={"Location": "/login"}
@@ -103,9 +105,47 @@ async def test_rejection_during_setup_starts_reauth(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert not _reauth_flows(hass)
+
+    # Still rejected once the grace period has passed: now the user is asked.
+    hass.data[_AUTH_REJECTED_SINCE][entry.entry_id] -= AUTH_GRACE_PERIOD
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
     assert entry.state is ConfigEntryState.SETUP_ERROR
     (flow,) = _reauth_flows(hass)
     assert flow["step_id"] == "reauth_confirm"
+
+
+async def test_rejection_during_setup_clears_when_accepted(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A player that accepts the credentials again loads without asking."""
+    aioclient_mock.get(
+        f"{BASE}/ajax/deviceInfo", status=303, headers={"Location": "/login"}
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=DEVICE_INFO["deviceId"], data=dict(USER_INPUT)
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{BASE}/ajax/deviceInfo", json=DEVICE_INFO)
+    mock_status_reads(aioclient_mock)
+    aioclient_mock.get(
+        f"{BASE}/ajax/content/get",
+        json={"success": True, "result": {"content": CONTENT}},
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert not _reauth_flows(hass)
+    assert entry.entry_id not in hass.data[_AUTH_REJECTED_SINCE]
 
 
 async def test_rejection_becomes_reauth_only_after_the_grace_period(

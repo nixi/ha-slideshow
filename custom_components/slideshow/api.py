@@ -191,7 +191,7 @@ class SlideshowClient:
                         f"{method} {path} is not offered by this player"
                     )
                 if response.status >= 400:
-                    body = (await response.text())[:200]
+                    body = (await response.text(errors="replace"))[:200]
                     raise SlideshowApiError(
                         f"{method} {path} failed: HTTP {response.status}: {body}"
                     )
