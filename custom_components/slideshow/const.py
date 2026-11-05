@@ -145,18 +145,18 @@ DEFAULT_PANEL_TEMPLATE: Final = """\
   <div class="ss-row">
     <div class="ss-card" style="flex: 0 0 34%">
       <div class="ss-label">Outside</div>
-      <div class="ss-big">{{ states(outdoor) }}&deg;</div>
+      <div class="ss-big">{{ states(outdoor) | e }}&deg;</div>
       <div class="ss-mid ss-muted">
-        {{ states(weather_entity) | replace("_", " ") | title }}
+        {{ states(weather_entity) | replace("_", " ") | title | e }}
       </div>
     </div>
     <div class="ss-card">
       <div class="ss-label">Inside</div>
       <ul class="ss-list">
         {%- for name, eid in indoor %}
-        <li><span>{{ name }}</span>
-            <span>{{ states(eid) }}
-              {{ state_attr(eid, "unit_of_measurement") or "" }}</span></li>
+        <li><span>{{ name | e }}</span>
+            <span>{{ states(eid) | e }}
+              {{ (state_attr(eid, "unit_of_measurement") or "") | e }}</span></li>
         {%- endfor %}
       </ul>
     </div>
@@ -168,13 +168,13 @@ DEFAULT_PANEL_TEMPLATE: Final = """\
       <ul class="ss-list">
         {%- for eid in agenda %}
         {%- if states(eid) not in ["unknown", "unavailable"] %}
-        <li><span>{{ state_attr(eid, "message") or "Nothing scheduled" }}</span>
+        <li><span>{{ (state_attr(eid, "message") or "Nothing scheduled") | e }}</span>
             <span class="ss-muted">
-              {{ (state_attr(eid, "start_time") or "")[11:16] }}</span></li>
+              {{ (state_attr(eid, "start_time") or "")[11:16] | e }}</span></li>
         {%- endif %}
         {%- endfor %}
         {%- if states(transit) not in ["unknown", "unavailable"] %}
-        <li><span>Next departure</span><span>{{ states(transit) }}</span></li>
+        <li><span>Next departure</span><span>{{ states(transit) | e }}</span></li>
         {%- endif %}
       </ul>
     </div>
@@ -183,9 +183,9 @@ DEFAULT_PANEL_TEMPLATE: Final = """\
       <ul class="ss-list">
         {%- for name, eid in status %}
         {%- set value = states(eid) %}
-        <li><span>{{ name }}</span>
+        <li><span>{{ name | e }}</span>
             <span class="{{ "ss-bad" if value in alerting else "ss-ok" }}">
-              {{ value | replace("_", " ") | title }}</span></li>
+              {{ value | replace("_", " ") | title | e }}</span></li>
         {%- endfor %}
       </ul>
     </div>
@@ -193,6 +193,6 @@ DEFAULT_PANEL_TEMPLATE: Final = """\
 
 </div>
 <div class="ss-label" style="position: fixed; bottom: 1.5vh; left: 3vw">
-  {{ now().strftime("%H:%M &middot; %a %d %b") }}
+  {{ now().strftime("%H:%M") | e }} &middot; {{ now().strftime("%a %d %b") | e }}
 </div>
 """

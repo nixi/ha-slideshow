@@ -27,13 +27,13 @@
   <div class="ss-row">
     <div class="ss-card" style="flex: 0 0 30%">
       <div class="ss-label">Outside</div>
-      <div class="ss-big">{{ state_attr(weather_entity, "temperature") | round(1) }}&deg;</div>
+      <div class="ss-big">{{ state_attr(weather_entity, "temperature") | round(1) | e }}&deg;</div>
       <div class="ss-mid ss-muted">
-        {{ states(weather_entity) | replace("_", " ") | title }}
+        {{ states(weather_entity) | replace("_", " ") | title | e }}
       </div>
       <div class="ss-muted" style="margin-top:.6vh">
-        {{ state_attr(weather_entity, "humidity") }}% &middot;
-        {{ states(price) }} {{ state_attr(price, "unit_of_measurement") or "" }}
+        {{ state_attr(weather_entity, "humidity") | e }}% &middot;
+        {{ states(price) | e }} {{ (state_attr(price, "unit_of_measurement") or "") | e }}
       </div>
     </div>
 
@@ -42,8 +42,8 @@
       <ul class="ss-list">
         {%- for name, eid in temperatures %}
         {%- if states(eid) not in ["unknown", "unavailable"] %}
-        <li><span>{{ name }}</span>
-            <span>{{ states(eid) | float(0) | round(1) }} &deg;C</span></li>
+        <li><span>{{ name | e }}</span>
+            <span>{{ states(eid) | float(0) | round(1) | e }} &deg;C</span></li>
         {%- endif %}
         {%- endfor %}
       </ul>
@@ -54,9 +54,9 @@
       <ul class="ss-list">
         {%- for name, eid, good in status %}
         {%- set value = states(eid) %}
-        <li><span>{{ name }}</span>
+        <li><span>{{ name | e }}</span>
             <span class="{{ 'ss-ok' if value in good else 'ss-bad' }}">
-              {{ value | replace("_", " ") | title }}</span></li>
+              {{ value | replace("_", " ") | title | e }}</span></li>
         {%- endfor %}
       </ul>
     </div>
@@ -67,9 +67,9 @@
       <div class="ss-label">Departures</div>
       <ul class="ss-list">
         {%- for dep in (state_attr(transit, "upcoming") or [])[:4] %}
-        <li><span>{{ dep.line }} &middot; {{ dep.destination }}</span>
-            <span>{{ dep.time_formatted }}
-              <span class="ss-muted">{{ dep.minutes_until }} min</span></span></li>
+        <li><span>{{ dep.line | e }} &middot; {{ dep.destination | e }}</span>
+            <span>{{ dep.time_formatted | e }}
+              <span class="ss-muted">{{ dep.minutes_until | e }} min</span></span></li>
         {%- endfor %}
         {%- if not (state_attr(transit, "upcoming") or []) %}
         <li><span class="ss-muted">No departures</span></li>
@@ -84,9 +84,9 @@
         {%- set msg = state_attr(eid, "message") %}
         {%- set start = state_attr(eid, "start_time") %}
         {%- if msg %}
-        <li><span><span class="ss-muted">{{ name }}</span> {{ msg | truncate(38, true) }}</span>
+        <li><span><span class="ss-muted">{{ name | e }}</span> {{ msg | truncate(38, true) | e }}</span>
             <span class="ss-muted">
-              {{ as_datetime(start).strftime("%a %H:%M") if start else "" }}</span></li>
+              {{ (as_datetime(start).strftime("%a %H:%M") if start else "") | e }}</span></li>
         {%- endif %}
         {%- endfor %}
       </ul>
@@ -95,5 +95,5 @@
 
 </div>
 <div class="ss-label" style="position: fixed; bottom: 1.5vh; left: 3vw">
-  {{ now().strftime("%H:%M &middot; %a %-d %b") }}
+  {{ now().strftime("%H:%M") | e }} &middot; {{ now().strftime("%a %-d %b") | e }}
 </div>

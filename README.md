@@ -54,8 +54,8 @@ data:
   html: >
     <div style="font-family: sans-serif; text-align: center;
                 padding-top: 20vh; color: #fff">
-      <div style="font-size: 6vw">{{ states('sensor.outside_temperature') }} °C</div>
-      <div style="font-size: 2vw">{{ states('weather.home') }}</div>
+      <div style="font-size: 6vw">{{ states('sensor.outside_temperature') | e }} °C</div>
+      <div style="font-size: 2vw">{{ states('weather.home') | e }}</div>
     </div>
 ```
 
@@ -220,6 +220,18 @@ come out invisible the way sent HTML can. These classes are available: `ss-grid`
 `ss-card`, `ss-label`, `ss-big`, `ss-mid`, `ss-muted`, `ss-list`, and `ss-ok` / `ss-warn` /
 `ss-bad` for state colours. Your template can include its own `<style>` block as well.
 
+**Escape what you show.** The template's output is inserted into the page as HTML, and the
+page is served from your Home Assistant address. Some values can be written by other
+people — a calendar invite sets an event title, a transit feed sets a destination — so
+end every value you interpolate with `| e`, as the shipped default and the example do:
+
+```jinja
+<li>{{ state_attr("calendar.family", "message") | e }}</li>
+```
+
+Leave `| e` off only for markup you wrote yourself. The page also sends a
+Content-Security-Policy that allows no script but its own, as a second line of defence.
+
 > [!IMPORTANT]
 > **Load the URL directly — do not put it in an `<iframe>`.** Home Assistant sends
 > `X-Frame-Options: SAMEORIGIN`, so a cross-origin frame renders as a broken image. A
@@ -341,9 +353,10 @@ data:
 
 ## Sample content
 
-`samples/` holds a starter pack, and every release has a ready-made `samples.zip`
-attached. Upload the ZIP through the web interface (menu **Files**) — SlideShow unpacks it
-automatically — then add the slides to a playlist.
+[`samples/`](samples/) holds a starter pack. Each release carries it as `samples.zip`
+under **Assets** on the [releases page](https://github.com/nixi/ha-slideshow/releases), or
+zip the folder's contents yourself. Upload the ZIP through the web interface (menu
+**Files**) — SlideShow unpacks it automatically — then add the slides to a playlist.
 
 - `slides/01.jpg` … `05.jpg` — five numbered slides, so playlist cycling, next/previous
   and transitions are obvious at a glance

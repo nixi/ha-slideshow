@@ -12,8 +12,11 @@ and the player can hold it as an ordinary playlist item.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
 import hmac
+import html
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -51,6 +54,40 @@ NO_URL_MESSAGE = (
 # Sent as an SSE comment so proxies and the player's browser keep the
 # connection open during quiet periods.
 HEARTBEAT_SECONDS = 25
+
+# The page's only script. Templates are inserted with innerHTML, so the CSP
+# below pins script execution to exactly this block by its hash: markup that
+# slips through a template unescaped (an <img onerror=...> in a calendar title,
+# say) cannot run script on the Home Assistant origin.
+_SCRIPT = """
+(function () {
+  var root = document.getElementById('root');
+  var offline = document.getElementById('offline');
+  var src = null;
+
+  function connect() {
+    if (src) { src.close(); }
+    src = new EventSource(location.pathname.replace(/\\/$/, '') + '/events');
+    src.onmessage = function (e) {
+      offline.hidden = true;
+      try { root.innerHTML = JSON.parse(e.data); } catch (err) {}
+    };
+    src.onopen = function () { offline.hidden = true; };
+    src.onerror = function () {
+      offline.hidden = false;
+      // EventSource retries on its own, but a player that has been asleep can
+      // end up with a dead handle, so replace it after a pause.
+      setTimeout(connect, 10000);
+    };
+  }
+  connect();
+})();
+"""
+_SCRIPT_HASH = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
+PANEL_CSP = (
+    f"script-src 'sha256-{_SCRIPT_HASH}'; "
+    "object-src 'none'; base-uri 'none'; form-action 'none'"
+)
 
 # A slow player should not be able to pin memory by opening streams it never
 # reads; drop the oldest queued render instead of growing without bound.
@@ -184,7 +221,10 @@ class SlideshowPanelView(http.HomeAssistantView):
         return web.Response(
             text=_page(renderer.title),
             content_type="text/html",
-            headers={"Cache-Control": "no-store"},
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": PANEL_CSP,
+            },
         )
 
 
@@ -309,7 +349,7 @@ def _page(title: str) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
+<title>{html.escape(title)}</title>
 <style>
   :root {{
     --bg: #0d1b24; --bg2: #14293a; --fg: #ffffff; --muted: rgba(255,255,255,.62);
@@ -356,30 +396,7 @@ def _page(title: str) -> str:
 <body>
 <div id="root"><div class="ss-error">Waiting for Home Assistant…</div></div>
 <div id="offline" hidden>Disconnected</div>
-<script>
-(function () {{
-  var root = document.getElementById('root');
-  var offline = document.getElementById('offline');
-  var src = null;
-
-  function connect() {{
-    if (src) {{ src.close(); }}
-    src = new EventSource(location.pathname.replace(/\\/$/, '') + '/events');
-    src.onmessage = function (e) {{
-      offline.hidden = true;
-      try {{ root.innerHTML = JSON.parse(e.data); }} catch (err) {{}}
-    }};
-    src.onopen = function () {{ offline.hidden = true; }};
-    src.onerror = function () {{
-      offline.hidden = false;
-      // EventSource retries on its own, but a player that has been asleep can
-      // end up with a dead handle, so replace it after a pause.
-      setTimeout(connect, 10000);
-    }};
-  }}
-  connect();
-}})();
-</script>
+<script>{_SCRIPT}</script>
 </body>
 </html>
 """

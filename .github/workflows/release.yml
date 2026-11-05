@@ -1,0 +1,24 @@
+name: Release assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  samples:
+    name: Attach samples.zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build samples.zip
+        # The ZIP holds the folder's contents at its root, which is what
+        # SlideShow's Files upload expects.
+        run: cd samples && zip -r -X ../samples.zip .
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" samples.zip --clobber
