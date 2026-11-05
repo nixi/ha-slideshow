@@ -36,7 +36,9 @@ async def test_show_html(hass: HomeAssistant, aioclient_mock, init_integration) 
 
     markup = '<div style="color:#fff">Dinner is ready</div>'
     await hass.services.async_call(
-        DOMAIN, "show_html", {ATTR_ENTITY_ID: ENTITY, "html": markup, "length": 20},
+        DOMAIN,
+        "show_html",
+        {ATTR_ENTITY_ID: ENTITY, "html": markup, "length": 20},
         blocking=True,
     )
 
@@ -91,8 +93,11 @@ async def test_show_camera_prefers_rtsp(
         await hass.services.async_call(
             DOMAIN,
             "show_camera",
-            {ATTR_ENTITY_ID: ENTITY, "camera_entity_id": "camera.front_door",
-             "duration": 45},
+            {
+                ATTR_ENTITY_ID: ENTITY,
+                "camera_entity_id": "camera.front_door",
+                "duration": 45,
+            },
             blocking=True,
         )
 
@@ -210,12 +215,23 @@ async def test_install_panel_pulls_the_url_file_and_creates_content(
         re.compile(r"/ajax/content/create"),
         json={"success": True, "result": {"id": 34, "playlistId": 35}},
     )
-    aioclient_mock.get(re.compile(r"/ajax/content/get"), json={
-        "success": True, "result": {"content": [
-            {"id": 34, "playlistId": 35, "name": "Home Assistant panel",
-             "path": "ha_panel.url", "type": "ALPHABETICALLY"},
-        ]},
-    })
+    aioclient_mock.get(
+        re.compile(r"/ajax/content/get"),
+        json={
+            "success": True,
+            "result": {
+                "content": [
+                    {
+                        "id": 34,
+                        "playlistId": 35,
+                        "name": "Home Assistant panel",
+                        "path": "ha_panel.url",
+                        "type": "ALPHABETICALLY",
+                    },
+                ]
+            },
+        },
+    )
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
     mock_status_reads(aioclient_mock, None)
 
@@ -247,10 +263,20 @@ async def test_create_content_returns_the_new_ids(
     )
     aioclient_mock.get(
         re.compile(r"/ajax/content/get"),
-        json={"success": True, "result": {"content": [
-            {"id": 34, "playlistId": 35, "name": "Holiday photos",
-             "path": "photos/holiday", "type": "ALPHABETICALLY"},
-        ]}},
+        json={
+            "success": True,
+            "result": {
+                "content": [
+                    {
+                        "id": 34,
+                        "playlistId": 35,
+                        "name": "Holiday photos",
+                        "path": "photos/holiday",
+                        "type": "ALPHABETICALLY",
+                    },
+                ]
+            },
+        },
     )
     aioclient_mock.get(re.compile(r"/ajax/deviceInfo"), json=DEVICE_INFO)
     mock_status_reads(aioclient_mock, None)
@@ -258,8 +284,11 @@ async def test_create_content_returns_the_new_ids(
     response = await hass.services.async_call(
         DOMAIN,
         "create_content",
-        {ATTR_ENTITY_ID: ENTITY, "content_name": "Holiday photos",
-         "path": "photos/holiday"},
+        {
+            ATTR_ENTITY_ID: ENTITY,
+            "content_name": "Holiday photos",
+            "path": "photos/holiday",
+        },
         blocking=True,
         return_response=True,
     )
@@ -285,7 +314,9 @@ async def test_delete_content(
     mock_status_reads(aioclient_mock, None)
 
     await hass.services.async_call(
-        DOMAIN, "delete_content", {ATTR_ENTITY_ID: ENTITY, "content_id": 34},
+        DOMAIN,
+        "delete_content",
+        {ATTR_ENTITY_ID: ENTITY, "content_id": 34},
         blocking=True,
     )
 
@@ -301,8 +332,12 @@ async def test_unknown_content_type_is_rejected(
         await hass.services.async_call(
             DOMAIN,
             "create_content",
-            {ATTR_ENTITY_ID: ENTITY, "content_name": "x", "path": "y",
-             "content_type": "WEBPAGE"},
+            {
+                ATTR_ENTITY_ID: ENTITY,
+                "content_name": "x",
+                "path": "y",
+                "content_type": "WEBPAGE",
+            },
             blocking=True,
         )
 
@@ -408,8 +443,13 @@ async def test_show_file_can_wait(
     await hass.services.async_call(
         DOMAIN,
         "show_file",
-        {ATTR_ENTITY_ID: ENTITY, "file": "film.mp4", "length": 60, "wait": True,
-         "audio_track_id": "2"},
+        {
+            ATTR_ENTITY_ID: ENTITY,
+            "file": "film.mp4",
+            "length": 60,
+            "wait": True,
+            "audio_track_id": "2",
+        },
         blocking=True,
     )
 
@@ -447,8 +487,7 @@ async def test_permanent_layout_has_no_length(
         await hass.services.async_call(
             DOMAIN,
             "set_layout",
-            {ATTR_ENTITY_ID: ENTITY, "layout_id": 33, "permanent": True,
-             "length": 60},
+            {ATTR_ENTITY_ID: ENTITY, "layout_id": 33, "permanent": True, "length": 60},
             blocking=True,
         )
 
@@ -456,11 +495,19 @@ async def test_permanent_layout_has_no_length(
 @pytest.mark.parametrize(
     ("service", "data", "endpoint", "query"),
     [
-        ("send_key", {"key_code": "KEYCODE_ENTER"}, "control/key",
-         {"keyCode": "KEYCODE_ENTER"}),
+        (
+            "send_key",
+            {"key_code": "KEYCODE_ENTER"},
+            "control/key",
+            {"keyCode": "KEYCODE_ENTER"},
+        ),
         ("tap", {"x": 640, "y": 400}, "control/click", {"x": "640", "y": "400"}),
-        ("start_app", {"package_name": "com.android.chrome"}, "system/startApp",
-         {"packageName": "com.android.chrome"}),
+        (
+            "start_app",
+            {"package_name": "com.android.chrome"},
+            "system/startApp",
+            {"packageName": "com.android.chrome"},
+        ),
     ],
 )
 async def test_remote_control(

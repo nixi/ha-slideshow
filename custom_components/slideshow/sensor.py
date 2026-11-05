@@ -262,7 +262,6 @@ class SlideshowSensor(SlideshowEntity, SensorEntity):
         return value
 
 
-
 class SlideshowLastActivitySensor(SlideshowEntity, SensorEntity):
     """When the screen was last touched or a key pressed.
 

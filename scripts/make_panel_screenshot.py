@@ -61,14 +61,30 @@ ATTRS = {
     ("calendar.waste_collection", "message"): "Food and residual waste",
     ("calendar.waste_collection", "start_time"): "2026-09-24 00:00:00",
     ("sensor.bus_stop_departures", "upcoming"): [
-        {"line": "3", "destination": "City centre",
-         "time_formatted": "08:12", "minutes_until": 4},
-        {"line": "6", "destination": "Station",
-         "time_formatted": "08:19", "minutes_until": 11},
-        {"line": "3", "destination": "City centre",
-         "time_formatted": "08:32", "minutes_until": 24},
-        {"line": "21", "destination": "Hospital",
-         "time_formatted": "08:40", "minutes_until": 32},
+        {
+            "line": "3",
+            "destination": "City centre",
+            "time_formatted": "08:12",
+            "minutes_until": 4,
+        },
+        {
+            "line": "6",
+            "destination": "Station",
+            "time_formatted": "08:19",
+            "minutes_until": 11,
+        },
+        {
+            "line": "3",
+            "destination": "City centre",
+            "time_formatted": "08:32",
+            "minutes_until": 24,
+        },
+        {
+            "line": "21",
+            "destination": "Hospital",
+            "time_formatted": "08:40",
+            "minutes_until": 32,
+        },
     ],
 }
 
@@ -87,9 +103,7 @@ def _render_content() -> str:
     env.filters["float"] = lambda value, default=0.0: (
         float(value) if str(value).replace(".", "", 1).isdigit() else default
     )
-    template = env.from_string(
-        (ROOT / "docs" / "panel-example.jinja").read_text()
-    )
+    template = env.from_string((ROOT / "docs" / "panel-example.jinja").read_text())
     return template.render(
         states=lambda entity: STATES.get(entity, "unknown"),
         state_attr=lambda entity, attr: ATTRS.get((entity, attr)),
@@ -115,8 +129,7 @@ def main() -> int:
     """Write docs/panel.png."""
     shell = _page_shell("Hallway panel")
     marker = (
-        '<div id="root">'
-        '<div class="ss-error">Waiting for Home Assistant…</div></div>'
+        '<div id="root"><div class="ss-error">Waiting for Home Assistant…</div></div>'
     )
     if marker not in shell:
         raise SystemExit("The page shell changed; update the marker in this script.")
@@ -133,17 +146,22 @@ def main() -> int:
         html.write_text(page)
         subprocess.run(
             [
-                _find_chrome(), "--headless", "--disable-gpu", "--hide-scrollbars",
-                "--force-device-scale-factor=1", "--window-size=1280,800",
-                f"--screenshot={shot}", str(html),
+                _find_chrome(),
+                "--headless",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--force-device-scale-factor=1",
+                "--window-size=1280,800",
+                f"--screenshot={shot}",
+                str(html),
             ],
             check=True,
             capture_output=True,
         )
         out = ROOT / "docs" / "panel.png"
-        Image.open(shot).convert(
-            "P", palette=Image.ADAPTIVE, colors=128
-        ).save(out, optimize=True)
+        Image.open(shot).convert("P", palette=Image.ADAPTIVE, colors=128).save(
+            out, optimize=True
+        )
         print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
     return 0
 
